@@ -2,17 +2,23 @@
 Can domain knowledge help to model a battery system?
 
 ## Getting Started
-In order to get this project up and running on your machine there are several steps to be taken. 
+In order to get this project up and running on your machine there are several steps to be taken
 ### 1. Include Data
-The data used for analysis needs to be included separately. 
+The data used for analysis needs to be included separately
 1. You can download it [here](https://publikationen.bibliothek.kit.edu/1000094469)
 
-After extracting the zip, you should be provided with a folder named `fobss_data`.
+After extracting the zip, you should be provided with a folder named `fobss_data`
 
 2. Move it into `data/`
 
-Now you are all set! Navigate to `notebooks/fobss_overview.ipynb` to get an overview of the data.
+Now you are all set! Navigate to `notebooks/fobss_overview.ipynb` to get an overview of the data
 
+### 2. Install Dependencies
+In order to be able to run the provided jupyter notebooks there are several dependencies needed to be installed. Using an anaconda shell please enter:
+
+`conda create --name environment_name --file dependencies.txt`
+
+This command will install all necessary dependencies needed for this project in an environment called "environment_name"
 ## Data
 The data we used in our approach is the FOBSS (Frequent Observations from a Battery System with Subunits) dataset. The data was conducted on a battery system with several battery packs each monitored by a subunit of the Battery Management System (BMS). They monitored the current, voltage and temperature during several charge, discharge and rest procedures, called profiles. 
 
