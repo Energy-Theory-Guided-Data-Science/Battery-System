@@ -1,4 +1,5 @@
 import numpy as np
+from sklearn import preprocessing
 from sklearn.preprocessing import MinMaxScaler
 from scipy import ndimage 
 
@@ -67,7 +68,7 @@ def smooth(sequence, sigma):
     In this context this means subsampling the first array so that it afterwards has the same size as the second array
     
 Args: 
-    sequence_1: arrray to be aligned
+    sequence_1: arrray to be aligned (the one with bigger size)
     sequence_2: array to be aligned to
     
 Returns:
@@ -125,34 +126,69 @@ def prepare_data(input_sequence, label_sequence, aligned, d_sample, n_steps, sig
     scaler_X = MinMaxScaler(feature_range = (0, 1))
     scaler_X.fit(X)
     X_scaled = scaler_X.transform(X)
-
+    
     # fit and scale y
     scaler_y = MinMaxScaler(feature_range = (0, 1))
     scaler_y.fit(y)
     y_scaled = scaler_y.transform(y)
-
+    
     # reshape into correct format
     X_scaled = X_scaled.reshape(X_scaled.shape[0], X_scaled.shape[1], 1)
     
     return X_scaled, y_scaled, scaler_y
 
-def prepare_data_unscaled(input_sequence, label_sequence, aligned, d_sample, n_steps, sigma):
-    # align data if not of equal size
-    if not aligned:        
-        input_sequence = align(input_sequence, label_sequence)
-
-    # subsample and smooth data 
-    input_sequence_ = subsample(input_sequence, d_sample)
-    input_sequence_ = smooth(input_sequence_, gauss_sigma)
+def preprocess_raw_data(params, sequence):
+    sequence = subsample(sequence, params['d_sample'])
+    sequence = smooth(sequence, params['gauss_sigma'])
+    sequence = np.reshape(sequence, (-1, 1))
     
-    label_sequence_ = subsample(label_sequence, d_sample)
-    label_sequence_ = smooth(label_sequence_, gauss_sigma)
+    scaler = MinMaxScaler(feature_range = (0, 1))
+    scaler.fit(sequence)
+    sequence = scaler.transform(sequence)
+    
+    return sequence, scaler
 
-    # convert into X and y sequences
-    X, y = subsequences(input_sequence_, label_sequence_, n_steps)
+
+def load_current_raw_data(profile):
+    current_data = np.loadtxt('../data/fobss_data/data/' + profile + '/inverter/Inverter_Current.csv', delimiter=';')
+    current_data = current_data[:,1] # only the first column includes necessary information
+    return current_data
+
+
+def load_voltage_raw_data(profile, slave, cell):
+    voltage_data = np.loadtxt('../data/fobss_data/data/' + profile + '/cells/Slave_' + str(slave) + '_Cell_Voltages.csv', delimiter=';')
+    voltage_data = voltage_data[:,cell] # select correct cell out of slave data
+    return voltage_data
+
+
+def prepare_data(params, profile, slave, cell):
+    # load and preprocess data
+    current_raw = load_current_raw_data(profile)
+    current_preprocessed, scaler_cur = preprocess_raw_data(params, current_raw)
+    
+    voltage_raw = load_voltage_raw_data(profile, slave, cell)
+    voltage_preprocessed, scaler_volt = preprocess_raw_data(params, voltage_raw)
+
+    # train_volt_repeat = np.full(shape=train_volt_slave_0_cell_4.shape[0], fill_value=train_volt_slave_0_cell_4[0], dtype=np.float)
+    
+    
+    # align current sequence to voltage if sample frequency differs
+    if voltage_preprocessed.shape[0] != current_preprocessed.shape[0]:
+        current_preprocessed = align(current_preprocessed, voltage_preprocessed)
+    
+    
+    # create input features
+    X1, y = subsequences(current_preprocessed, voltage_preprocessed, params['n_steps'])
     y = np.reshape(y, (-1, 1))
-
-    # reshape into correct format
-    X = X.reshape(X.shape[0], X.shape[1], 1)
+    X1 = X1.reshape(X1.shape[0], X1.shape[1], 1)
     
-    return X, y
+    current_cumulated = np.cumsum(current_preprocessed)
+    X2, _ = subsequences(current_cumulated, voltage_preprocessed, params['n_steps'])
+    X2 = X2.reshape(X2.shape[0], X2.shape[1], 1)
+    
+    X = np.append(X1, X2, axis=2)
+    print('Input:', X.shape, '\nOutput/Label:', y.shape)
+    
+    scalers = scaler_cur, scaler_volt
+    
+    return X, y, scalers
