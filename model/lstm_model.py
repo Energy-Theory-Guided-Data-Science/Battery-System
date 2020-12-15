@@ -76,27 +76,15 @@ class Model:
         Validation: shows the MSE of training, validation and test data and prints the test profiles
  
     Args:
-        X_validation
-        y_validation
-        X_test
-        y_test
+        X_validation: validation input data
+        y_validation: validation output data
+        X_test: test input data
+        y_test: test output data
 
     Returns:
         Tuple containin training, validation and test error (MSE)
     """
     def test(self, X_validation, y_validation, X_test, y_test, scalers):
-#         yhat1 = self.model.predict(X_test1, verbose = 1)
-#         yhat_rescaled1 = scaler[0].inverse_transform(yhat1)
-#         y_test_unscaled1 = scaler[0].inverse_transform(y_test1)
-
-#         yhat2 = self.model.predict(X_test2, verbose = 1)
-#         yhat_rescaled2 = scaler[1].inverse_transform(yhat2)
-#         y_test_unscaled2 = scaler[1].inverse_transform(y_test2)
-
-#         yhat3 = self.model.predict(X_test3, verbose = 1)
-#         yhat_rescaled3 = scaler[2].inverse_transform(yhat3)
-#         y_test_unscaled3 = scaler[2].inverse_transform(y_test3)
-
         yhat_validation = self.model.predict(X_validation, verbose = 1)
         yhat_validation_unscaled = scalers[0].inverse_transform(yhat_validation)
         y_validation_unscaled = scalers[0].inverse_transform(y_validation)
@@ -109,25 +97,23 @@ class Model:
         train_error = self.history.history['loss'][-1]
         validation_error = mean_squared_error(y_validation_unscaled, yhat_validation_unscaled)
         test_error = mean_squared_error(y_test_unscaled, yhat_test_unscaled)
-
+        
+        print('###########################################################')
         print('Train error:', round(train_error, 6))
         print('Validation error:', round(validation_error, 6))
         print('Test error', round(test_error, 6))
+        print('###########################################################')
 
         # plot profiles results
-        plt.subplots(figsize = (7,10))
-        plt.subplot(2,1,1)
         plt.plot(yhat_validation_unscaled, color='red', label = 'predicted')
         plt.plot(y_validation_unscaled, color='blue', label = 'measured')
+        plt.title('Validation Data')
         plt.legend()
         plt.subplot(2,1,2)
         plt.plot(yhat_test_unscaled, color='red', label = 'predicted')
         plt.plot(y_test_unscaled, color='blue', label = 'measured')
+        plt.title('Test Data')
         plt.legend()
-#         plt.subplot(3,1,3)
-#         plt.plot(yhat_rescaled2, color='red', label = 'predicted')
-#         plt.plot(y_test_unscaled2, color='blue', label = 'measured')
-#         plt.legend()
         plt.show()
         
         return train_error, validation_error, test_error
