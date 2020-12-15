@@ -1,8 +1,9 @@
 import numpy as np
 import matplotlib.pyplot as plt
+import sklearn.metrics as metrics
 from tensorflow import keras
 from tensorflow.keras import layers
-from sklearn.metrics import mean_squared_error
+from tabulate import tabulate
 
 class Model: 
     """ Initializes the LSTM model 
@@ -84,24 +85,37 @@ class Model:
     Returns:
         Tuple containin training, validation and test error (MSE)
     """
-    def test(self, X_validation, y_validation, X_test, y_test, scalers):
+    def test(self, X_train, y_train, X_validation, y_validation, X_test, y_test, scalers):
+        yhat_train = self.model.predict(X_train, verbose = 1)
+        yhat_train_unscaled = scalers[0][1].inverse_transform(yhat_train)
+        y_train_unscaled = scalers[0][1].inverse_transform(y_train)
+        
         yhat_validation = self.model.predict(X_validation, verbose = 1)
-        yhat_validation_unscaled = scalers[0][1].inverse_transform(yhat_validation)
-        y_validation_unscaled = scalers[0][1].inverse_transform(y_validation)
+        yhat_validation_unscaled = scalers[1][1].inverse_transform(yhat_validation)
+        y_validation_unscaled = scalers[1][1].inverse_transform(y_validation)
         
         yhat_test = self.model.predict(X_test, verbose = 1)
-        yhat_test_unscaled = scalers[1][1].inverse_transform(yhat_test)
-        y_test_unscaled = scalers[1][1].inverse_transform(y_test)
+        yhat_test_unscaled = scalers[2][1].inverse_transform(yhat_test)
+        y_test_unscaled = scalers[2][1].inverse_transform(y_test)
 
         # compute train, test and validation error
-        train_error = self.history.history['loss'][-1]
-        validation_error = mean_squared_error(y_validation_unscaled, yhat_validation_unscaled)
-        test_error = mean_squared_error(y_test_unscaled, yhat_test_unscaled)
+        train_mse = metrics.mean_squared_error(y_train_unscaled, yhat_train_unscaled)
+        validation_mse = metrics.mean_squared_error(y_validation_unscaled, yhat_validation_unscaled)
+        test_mse = metrics.mean_squared_error(y_test_unscaled, yhat_test_unscaled)
+        
+        train_mae = metrics.mean_absolute_error(y_train_unscaled, yhat_train_unscaled)
+        validation_mae = metrics.mean_absolute_error(y_validation_unscaled, yhat_validation_unscaled)
+        test_mae = metrics.mean_absolute_error(y_test_unscaled, yhat_test_unscaled)
+        
+        train_max = metrics.max_error(y_train_unscaled, yhat_train_unscaled)
+        validation_max = metrics.max_error(y_validation_unscaled, yhat_validation_unscaled)
+        test_max = metrics.max_error(y_test_unscaled, yhat_test_unscaled)
         
         print('###########################################################')
-        print('Train error:', round(train_error, 6))
-        print('Validation error:', round(validation_error, 6))
-        print('Test error', round(test_error, 6))
+        error_table = tabulate([['MSE', round(train_mse, 6), round(validation_mse, 6), round(test_mse, 6)], 
+          ['MAE', round(train_mae, 4), round(validation_mae, 4), round(test_mae, 4)], 
+          ['MaxE', round(train_max, 4), round(validation_max, 4), round(test_max, 4)]], headers=['Training', 'Validation', 'Test'])
+        print(error_table)
         print('###########################################################')
 
         # plot profiles results
@@ -118,5 +132,5 @@ class Model:
         plt.legend()
         plt.show()
         
-        return train_error, validation_error, test_error
+        return train_mse, validation_mse, test_mse
         
