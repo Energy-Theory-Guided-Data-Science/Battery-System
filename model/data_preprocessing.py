@@ -106,7 +106,7 @@ Returns:
     A tuple of 3 values. The prepared input sequence X, the output sequence of labels y and the scaler component for y. 
     This is needed afterwards to scale the output back to the original value range
 """
-def prepare_data(input_sequence, label_sequence, aligned, d_sample, n_steps, sigma):
+def prepare(input_sequence, label_sequence, aligned, d_sample, n_steps, sigma):
     # align data if not of equal size
     if not aligned:        
         input_sequence = align(input_sequence, label_sequence)
@@ -161,31 +161,34 @@ def load_voltage_raw_data(profile, slave, cell):
     return voltage_data
 
 
-def prepare_data(params, profile, slave, cell):
-    # load and preprocess data
-    current_raw = load_current_raw_data(profile)
-    current_preprocessed, scaler_cur = preprocess_raw_data(params, current_raw)
+def prepare_training_data(params, profiles, slave, cell):
     
-    voltage_raw = load_voltage_raw_data(profile, slave, cell)
+    current_raw, voltage_raw = [], []
+    for profile in profiles:
+        current_raw = np.append(current_raw, load_current_raw_data(profile), axis=0)
+        voltage_raw = np.append(voltage_raw, load_voltage_raw_data(profile, slave, cell), axis=0)
+        
+    # preprocess data
+    current_preprocessed, scaler_cur = preprocess_raw_data(params, current_raw)
     voltage_preprocessed, scaler_volt = preprocess_raw_data(params, voltage_raw)
 
     # train_volt_repeat = np.full(shape=train_volt_slave_0_cell_4.shape[0], fill_value=train_volt_slave_0_cell_4[0], dtype=np.float)
     
-    
+
     # align current sequence to voltage if sample frequency differs
     if voltage_preprocessed.shape[0] != current_preprocessed.shape[0]:
         current_preprocessed = align(current_preprocessed, voltage_preprocessed)
-    
-    
+
+
     # create input features
     X1, y = subsequences(current_preprocessed, voltage_preprocessed, params['n_steps'])
     y = np.reshape(y, (-1, 1))
     X1 = X1.reshape(X1.shape[0], X1.shape[1], 1)
-    
+
     current_cumulated = np.cumsum(current_preprocessed)
     X2, _ = subsequences(current_cumulated, voltage_preprocessed, params['n_steps'])
     X2 = X2.reshape(X2.shape[0], X2.shape[1], 1)
-    
+
     X = np.append(X1, X2, axis=2)
     print('Input:', X.shape, '\nOutput/Label:', y.shape)
     
