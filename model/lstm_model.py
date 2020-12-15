@@ -86,12 +86,12 @@ class Model:
     """
     def test(self, X_validation, y_validation, X_test, y_test, scalers):
         yhat_validation = self.model.predict(X_validation, verbose = 1)
-        yhat_validation_unscaled = scalers[0].inverse_transform(yhat_validation)
-        y_validation_unscaled = scalers[0].inverse_transform(y_validation)
+        yhat_validation_unscaled = scalers[0][1].inverse_transform(yhat_validation)
+        y_validation_unscaled = scalers[0][1].inverse_transform(y_validation)
         
         yhat_test = self.model.predict(X_test, verbose = 1)
-        yhat_test_unscaled = scalers[1].inverse_transform(yhat_test)
-        y_test_unscaled = scalers[1].inverse_transform(y_test)
+        yhat_test_unscaled = scalers[1][1].inverse_transform(yhat_test)
+        y_test_unscaled = scalers[1][1].inverse_transform(y_test)
 
         # compute train, test and validation error
         train_error = self.history.history['loss'][-1]
@@ -105,6 +105,8 @@ class Model:
         print('###########################################################')
 
         # plot profiles results
+        plt.subplots(figsize = (7,10))
+        plt.subplot(2,1,1)
         plt.plot(yhat_validation_unscaled, color='red', label = 'predicted')
         plt.plot(y_validation_unscaled, color='blue', label = 'measured')
         plt.title('Validation Data')
