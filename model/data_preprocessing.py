@@ -2,19 +2,20 @@ import numpy as np
 from sklearn import preprocessing
 from sklearn.preprocessing import MinMaxScaler
 from scipy import ndimage 
+from deprecated import deprecated
 
 """ Creates subsequences of the original sequence to fit LSTM structure
  
-Args:
-    sequence_1: the first sequence which gets converted into multiple subarrays of length: n_steps
-    sequence_2: the second sequence, each n_steps'th element will be part of the output array
-    n_steps: the amount of time steps used as an input into the LSTM for prediction
+    Args:
+        sequence_1: the first sequence which gets converted into multiple subarrays of length: n_steps
+        sequence_2: the second sequence, each n_steps'th element will be part of the output array
+        n_steps: the amount of time steps used as an input into the LSTM for prediction
 
-Returns:
-    A tuple of 2 numpy arrays in the required format
-    
-    X.shape = (X.shape[0] - n_steps, n_steps)
-    y.shape = (X.shape[0] - n_steps, 1)
+    Returns:
+        A tuple of 2 numpy arrays in the required format
+
+        X.shape = (X.shape[0] - n_steps, n_steps)
+        y.shape = (X.shape[0] - n_steps, 1)
 
 """
 def subsequences(sequence_X, sequence_y, n_steps):
@@ -38,12 +39,12 @@ def subsequences(sequence_X, sequence_y, n_steps):
 
 """ Subsample array to decrease the amount of data
 
-Args:
-    sequence: the input array to be subsampled
-    d_sample: sample frequency, meaning every d_sample'th element will be part of the output
-    
-Returns:
-    The subsampled array
+    Args:
+        sequence: the input array to be subsampled
+        d_sample: sample frequency, meaning every d_sample'th element will be part of the output
+
+    Returns:
+        The subsampled array
 
 """
 def subsample(sequence, d_sample):
@@ -52,12 +53,12 @@ def subsample(sequence, d_sample):
 
 """ Smooth array to decrease measurement noise
 
-Args: 
-    sequence: the input array to be smoothed
-    sigma: parameter for the gauss filtering
+    Args: 
+        sequence: the input array to be smoothed
+        sigma: parameter for the gauss filtering
 
-Returns:
-    The smoothed array
+    Returns:
+        The smoothed array
 """
 def smooth(sequence, sigma):
     return ndimage.filters.gaussian_filter(sequence, sigma)
@@ -67,12 +68,12 @@ def smooth(sequence, sigma):
 
     In this context this means subsampling the first array so that it afterwards has the same size as the second array
     
-Args: 
-    sequence_1: arrray to be aligned (the one with bigger size)
-    sequence_2: array to be aligned to
-    
-Returns:
-    The algined array
+    Args: 
+        sequence_1: arrray to be aligned (the one with bigger size)
+        sequence_2: array to be aligned to
+
+    Returns:
+        The algined array
 """
 def align(sequence_1, sequence_2):
     if len(sequence_1) < len(sequence_2):
@@ -91,21 +92,21 @@ def align(sequence_1, sequence_2):
 
 """ Prepares the data for input into the LSTM
 
-    Preparation incudes:
-    subsampling, smoothing, aligning differnt sized sequences and reshaping the sequence to the requested format
+    Preparation incudes subsampling, smoothing, aligning differnt sized sequences and reshaping the sequence to the requested format
     
-Args:
-    input_sequence: the input feature sequence
-    label_sequence: the output/groud truth sequence
-    aligned: indicates if input and label sequence are of equal size or need alignment
-    d_sample: sample frequency
-    n_steps: the amount of time steps used as an input into the LSTM for prediction
-    sigma: parameter for the data smoothing
+    Args:
+        input_sequence: the input feature sequence
+        label_sequence: the output/groud truth sequence
+        aligned: indicates if input and label sequence are of equal size or need alignment
+        d_sample: sample frequency
+        n_steps: the amount of time steps used as an input into the LSTM for prediction
+        sigma: parameter for the data smoothing
 
-Returns:
-    A tuple of 3 values. The prepared input sequence X, the output sequence of labels y and the scaler component for y. 
-    This is needed afterwards to scale the output back to the original value range
+    Returns:
+        A tuple of 3 values. The prepared input sequence X, the output sequence of labels y and the scaler component for y. 
+        This is needed afterwards to scale the output back to the original value range
 """
+@deprecated(reason="You should use preprocess_raw_data instead")
 def prepare(input_sequence, label_sequence, aligned, d_sample, n_steps, sigma):
     # align data if not of equal size
     if not aligned:        
@@ -137,6 +138,16 @@ def prepare(input_sequence, label_sequence, aligned, d_sample, n_steps, sigma):
     
     return X_scaled, y_scaled, scaler_y
 
+
+""" Preprocesses the raw sequence by subsamling, smoothing and scaling the data
+
+    Args:
+        params: dictionary containing the key/values 's_sample' and 'gauss_sigma' which represent the input parameter for preprocessing
+        sequence: the sequence to be preprocessed
+        
+    Returns:
+        A tuple of 2 values. The preprocessed sequence and the scaler object (used for retransforming after training)
+"""
 def preprocess_raw_data(params, sequence):
     sequence = subsample(sequence, params['d_sample'])
     sequence = smooth(sequence, params['gauss_sigma'])
@@ -149,18 +160,51 @@ def preprocess_raw_data(params, sequence):
     return sequence, scaler
 
 
+""" Loads the current raw data
+
+    This method will extract raw data provided by the inverter current sensor
+
+    Args:
+        profile: the FOBSS profile from which the data should be loaded
+        
+    Returns:
+        A numpy array containing the requested raw data
+"""
 def load_current_raw_data(profile):
     current_data = np.loadtxt('../data/fobss_data/data/' + profile + '/inverter/Inverter_Current.csv', delimiter=';')
     current_data = current_data[:,1] # only the first column includes necessary information
     return current_data
 
 
+""" Loads the voltage raw data
+
+    This method will extract raw data provided by the specified cell voltage sensor
+
+    Args:
+        profile: the FOBSS profile from which the data should be loaded
+        slave: the battery slave (or stack)
+        cell: the battery cell 
+        
+    Returns:
+        A numpy array containing the requested raw data
+"""
 def load_voltage_raw_data(profile, slave, cell):
     voltage_data = np.loadtxt('../data/fobss_data/data/' + profile + '/cells/Slave_' + str(slave) + '_Cell_Voltages.csv', delimiter=';')
     voltage_data = voltage_data[:,cell] # select correct cell out of slave data
     return voltage_data
 
 
+""" Prepares the requested data to be suitable for the network
+
+    Args:
+        params: dictionary containing the key/values 's_sample', 'gauss_sigma', 'n_steps'
+        profiles: a list of all FOBSS profiles which should be used
+        slave: the battery slave (or stack)
+        cell: the battery cell 
+        
+    Returns:
+        A tuple containing 3 values. The prepared input X, the prepared output/label y and the used scalers
+"""
 def prepare_data(params, profiles, slave, cell):
     current_raw, voltage_raw = [], []
     for profile in profiles:

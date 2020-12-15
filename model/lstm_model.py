@@ -10,12 +10,11 @@ class Model:
 
         Visualization: a summary of the model will be printed
         
-    Args:
-        params: dictionary containing the model hyperparameters
+        Args:
+            params: dictionary containing the model hyperparameters
 
-    Returns:
-        The initialized model.
-
+        Returns:
+            The initialized model.
     """
     def initialize(self, params):
         # --------- create model ---------
@@ -43,13 +42,12 @@ class Model:
     
         Visualization: illustrates the training loss and absolute error over all training epochs
  
-    Args:
-        X: the input data
-        y: the groundtruth output data
+        Args:
+            X: the input data
+            y: the groundtruth output data
 
-    Returns:
-        The training history provided by keras
-
+        Returns:
+            The training history provided by keras
     """
     def train(self, X, y, scalers):
         history = self.model.fit(X, y, epochs = self.params['n_epochs'], verbose = 1)
@@ -76,14 +74,14 @@ class Model:
     
         Validation: shows the MSE of training, validation and test data and prints the test profiles
  
-    Args:
-        X_validation: validation input data
-        y_validation: validation output data
-        X_test: test input data
-        y_test: test output data
+        Args:
+            X_validation: validation input data
+            y_validation: validation output data
+            X_test: test input data
+            y_test: test output data
 
-    Returns:
-        Tuple containin training, validation and test error (MSE)
+        Returns:
+            Tuple containin training, validation and test error (MSE)
     """
     def test(self, X_train, y_train, X_validation, y_validation, X_test, y_test, scalers):
         yhat_train = self.model.predict(X_train, verbose = 1)
