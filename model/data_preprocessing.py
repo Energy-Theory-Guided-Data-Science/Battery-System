@@ -142,7 +142,7 @@ def preprocess_raw_data(params, sequence):
     sequence = smooth(sequence, params['gauss_sigma'])
     sequence = np.reshape(sequence, (-1, 1))
     
-    scaler = MinMaxScaler(feature_range = (0, 1))
+    scaler = MinMaxScaler(feature_range = (-1, 1))
     scaler.fit(sequence)
     sequence = scaler.transform(sequence)
     
@@ -161,7 +161,7 @@ def load_voltage_raw_data(profile, slave, cell):
     return voltage_data
 
 
-def prepare_training_data(params, profiles, slave, cell):
+def prepare_data(params, profiles, slave, cell):
     current_raw, voltage_raw = [], []
     for profile in profiles:
         current_raw = np.append(current_raw, load_current_raw_data(profile), axis=0)

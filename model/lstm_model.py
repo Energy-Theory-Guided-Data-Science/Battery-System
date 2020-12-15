@@ -106,7 +106,7 @@ class Model:
 
         # plot profiles results
         plt.subplots(figsize = (7,10))
-        plt.subplot(2,1,1)
+        plt.subplot(2,1,1)  
         plt.plot(yhat_validation_unscaled, color='red', label = 'predicted')
         plt.plot(y_validation_unscaled, color='blue', label = 'measured')
         plt.title('Validation Data')
