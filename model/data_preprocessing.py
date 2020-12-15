@@ -162,7 +162,6 @@ def load_voltage_raw_data(profile, slave, cell):
 
 
 def prepare_training_data(params, profiles, slave, cell):
-    
     current_raw, voltage_raw = [], []
     for profile in profiles:
         current_raw = np.append(current_raw, load_current_raw_data(profile), axis=0)
