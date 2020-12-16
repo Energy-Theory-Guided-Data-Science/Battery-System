@@ -153,7 +153,7 @@ def load_current_raw_data(profile):
         A numpy array containing the requested raw data.
     """
     
-    current_data = np.loadtxt('../data/fobss_data/data/' + profile + '/battery/Battery_Current.csv', delimiter=';')
+    current_data = np.loadtxt('../data/fobss_data/data/' + profile + '/inverter/Inverter_Current.csv', delimiter=';')
     current_data = current_data[:,1] # only the first column includes necessary information
     # plt.plot(current_data)  # TODO: to be removed
     return current_data
@@ -207,7 +207,7 @@ def prepare_data(params, profiles, slave, cell):
         voltage_raw = np.append(voltage_raw, load_voltage_raw_data(profile, slave, cell), axis=0)
     
     current_cum = np.cumsum(current_raw)
-    
+
     # preprocess data
     current_preprocessed, scaler_cur = preprocess_raw_data(params, current_raw)
     current_cum_preprocessed, scaler_cur_cum = preprocess_raw_data(params, current_cum)
@@ -216,13 +216,14 @@ def prepare_data(params, profiles, slave, cell):
     # align current sequence to voltage if sample frequency differs
     if voltage_preprocessed.shape[0] != current_preprocessed.shape[0]:
         current_preprocessed = align(current_preprocessed, voltage_preprocessed)
+        current_cum_preprocessed = align(current_cum_preprocessed, voltage_preprocessed)
 
     # create input features
     X1, y = subsequences(current_preprocessed, voltage_preprocessed, params['n_steps'])
     y = np.reshape(y, (-1, 1))
     X1 = X1.reshape(X1.shape[0], X1.shape[1], 1)
     
-    plt.plot(current_cum_preprocessed) # TODO: to be removed
+#     plt.plot(current_cum_preprocessed) # TODO: to be removed
     X2, _ = subsequences(current_cum_preprocessed, voltage_preprocessed, params['n_steps'])
     X2 = X2.reshape(X2.shape[0], X2.shape[1], 1)
 
