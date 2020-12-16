@@ -6,6 +6,9 @@ from tensorflow import keras
 from tensorflow.keras import layers
 from tabulate import tabulate
 
+import tensorflow.python.util.deprecation as deprecation
+deprecation._PRINT_DEPRECATION_WARNINGS = False # used to hide deprecation warning raised by tensorflow
+
 class Model: 
     """Responsible for managing the neural network architecture which is used to predict voltage time series data.
 
