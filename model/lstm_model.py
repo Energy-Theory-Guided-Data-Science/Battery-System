@@ -1,22 +1,38 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import sklearn.metrics as metrics
+
 from tensorflow import keras
 from tensorflow.keras import layers
 from tabulate import tabulate
 
 class Model: 
-    """ Initializes the LSTM model 
+    """Responsible for managing the neural network architecture which is used to predict voltage time series data.
 
-        Visualization: a summary of the model will be printed
-        
-        Args:
-            params: dictionary containing the model hyperparameters
+    Model is suited to work with the FOBSS data set (http://dbis.ipd.kit.edu/download/FOBSS_final.pdf) but can also be used with
+    different kinds of current and voltage data.
 
-        Returns:
-            The initialized model.
+    Attributes:
+        model (tensorflow.python.keras.engine.sequential.Sequential): 
+            A keras object representing the compiled model
+            
+        params (dict): 
+            A dictionary containing the hyperparameters
+            
+        history (tensorflow.python.keras.callbacks.History): 
+            A report of the training procedure
     """
+    
     def initialize(self, params):
+        """Initializes the LSTM model.
+
+        For visualization purposes, a summary of the model will be printed.
+
+        Args:
+            params (dict): 
+                A dictionary containing the hyperparameters
+        """
+        
         # --------- create model ---------
         model = keras.Sequential()
         # layer 1
@@ -32,27 +48,32 @@ class Model:
         # --------- compile model ---------
         model.compile(optimizer = params['optimizer'], loss = params['loss'], metrics=[params['metric']])
         
-        # save parameters
+        # save model parameters
         self.model = model
         self.params = params
-        return model
+        return None
 
-    
-    """ Trains the LSTM model 
-    
-        Visualization: illustrates the training loss and absolute error over all training epochs
- 
-        Args:
-            X: the input data
-            y: the groundtruth output data
 
-        Returns:
-            The training history provided by keras
-    """
     def train(self, X, y, scalers):
+        """Trains the LSTM model.
+
+        For visualization purposes, the MSE and MAE over all training epochs will be ploted.
+
+        Args:
+            X (numpy.ndarray): 
+                The input data
+                
+            y (numpy.ndarray): 
+                The groundtruth output data
+            
+            scalers (tuple):
+                The scaler objects which were used to scale X and y
+        """
+        
+        # --------- train model ---------
         history = self.model.fit(X, y, epochs = self.params['n_epochs'], verbose = 1)
         
-        # plot loss and error
+        # --------- visualize results ---------
         loss = history.history['loss']
         metrics = history.history['mae']
         epochs = range(1,len(loss)+1)
@@ -64,26 +85,47 @@ class Model:
         plt.subplot(2,1,2)
         plt.plot(epochs,metrics,'-o', color='green',label='absolute error')
         plt.legend()
+        plt.show()
         
         # save parameters
         self.history = history
         self.scalers_train = scalers
-        return history
+        return None
 
-    """ Tests the LSTM model on validation and test data
+
+    def test(self, X_train, y_train, X_validation, y_validation, X_test, y_test, scalers):
+        """Tests the LSTM model on validation and test data.
     
-        Validation: shows the MSE of training, validation and test data and prints the test profiles
+        For visualization purposes, a table with several metrics for training, validation and test data 
+        will be printed in adition to plots of the validation and test profiles used.
  
         Args:
-            X_validation: validation input data
-            y_validation: validation output data
-            X_test: test input data
-            y_test: test output data
+            X_train (numpy.ndarray):
+                The training input data used in Model.train()
+                
+            y_train (numpy.ndarray):
+                The training output data used in Model.train()
+            
+            X_validation (numpy.ndarray): 
+                validation input data
+                
+            y_validation (numpy.ndarray): 
+                validation output data
+                
+            X_test (numpy.ndarray): 
+                test input data
+                
+            y_test (numpy.ndarray): 
+                test output data
 
+            scalers (tuple):
+                The scaler objects which were used to scale X and y in training, validation and test data
+                
         Returns:
-            Tuple containin training, validation and test error (MSE)
-    """
-    def test(self, X_train, y_train, X_validation, y_validation, X_test, y_test, scalers):
+            A Tuple containin training, validation and test error (MSE)
+        """
+        
+        # --------- predict on data ---------
         yhat_train = self.model.predict(X_train, verbose = 1)
         yhat_train_unscaled = scalers[0][1].inverse_transform(yhat_train)
         y_train_unscaled = scalers[0][1].inverse_transform(y_train)
@@ -96,7 +138,7 @@ class Model:
         yhat_test_unscaled = scalers[2][1].inverse_transform(yhat_test)
         y_test_unscaled = scalers[2][1].inverse_transform(y_test)
 
-        # compute train, test and validation error
+        # --------- compute error ---------
         train_mse = metrics.mean_squared_error(y_train_unscaled, yhat_train_unscaled)
         validation_mse = metrics.mean_squared_error(y_validation_unscaled, yhat_validation_unscaled)
         test_mse = metrics.mean_squared_error(y_test_unscaled, yhat_test_unscaled)
@@ -109,6 +151,7 @@ class Model:
         validation_max = metrics.max_error(y_validation_unscaled, yhat_validation_unscaled)
         test_max = metrics.max_error(y_test_unscaled, yhat_test_unscaled)
         
+        # --------- visualize results ---------
         print('###########################################################')
         error_table = tabulate([['MSE', round(train_mse, 6), round(validation_mse, 6), round(test_mse, 6)], 
           ['MAE', round(train_mae, 4), round(validation_mae, 4), round(test_mae, 4)], 
@@ -116,7 +159,6 @@ class Model:
         print(error_table)
         print('###########################################################')
 
-        # plot profiles results
         plt.subplots(figsize = (7,10))
         plt.subplot(2,1,1)  
         plt.plot(yhat_validation_unscaled, color='red', label = 'predicted')
