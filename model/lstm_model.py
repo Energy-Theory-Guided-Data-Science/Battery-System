@@ -1,13 +1,34 @@
 import numpy as np
+import tensorflow as tf
 import matplotlib.pyplot as plt
 import sklearn.metrics as metrics
 
 from tensorflow import keras
 from tensorflow.keras import layers
+from tensorflow.keras import backend as K
+from tensorflow.keras.losses import mean_squared_error
 from tabulate import tabulate
 
 import tensorflow.python.util.deprecation as deprecation
 deprecation._PRINT_DEPRECATION_WARNINGS = False # used to hide deprecation warning raised by tensorflow
+
+def approx_loss(y_pred, params):
+    y_lower = tf.constant(params['y_l'], shape=(len(y_pred),))
+    y_upper = tf.constant(params['y_u'], shape=(len(y_pred),))
+    
+    return K.sum(K.relu(y_lower - y_pred) + K.relu(y_pred - y_upper))
+
+                 
+def combined_loss(params):
+    # wrapper function needed for the custom loss function to be accepted from keras
+    def loss(y_true, y_pred):
+        data_based_loss = mean_squared_error(y_true, y_pred)
+        approximation_loss = approx_loss(y_pred, params)
+        lambda_A = params['lambda_A']
+
+        return data_based_loss + lambda_A * approximation_loss
+    return loss
+
 
 class Model: 
     """Responsible for managing the neural network architecture which is used to predict voltage time series data.
@@ -49,7 +70,9 @@ class Model:
         model.summary()
         
         # --------- compile model ---------
-        model.compile(optimizer = params['optimizer'], loss = params['loss'], metrics=[params['metric']])
+        custom_loss = combined_loss(params)
+        
+        model.compile( optimizer=params['optimizer'], loss=custom_loss, metrics=[params['metric']])
         
         # save model parameters
         self.model = model
@@ -74,14 +97,14 @@ class Model:
         """
         
         # --------- train model ---------
-        history = self.model.fit(X, y, epochs = self.params['n_epochs'], verbose = 1)
+        history = self.model.fit(X, y, epochs=self.params['n_epochs'], verbose=1)
         
         # --------- visualize results ---------
         loss = history.history['loss']
         metrics = history.history['mae']
         epochs = range(1,len(loss)+1)
         
-        plt.subplots(figsize = (5,5))
+        plt.subplots(figsize=(5,5))
         plt.subplot(2,1,1)
         plt.plot(epochs,loss,'-o',label='training loss')
         plt.legend()
@@ -129,11 +152,11 @@ class Model:
         """
         
         # --------- predict on data ---------
-        yhat_train = self.model.predict(X_train, verbose = 1)
+        yhat_train = self.model.predict(X_train, verbose=1)
         yhat_train_unscaled = scalers[0][1].inverse_transform(yhat_train)
         y_train_unscaled = scalers[0][1].inverse_transform(y_train)
         
-        yhat_validation = self.model.predict(X_validation, verbose = 1)
+        yhat_validation = self.model.predict(X_validation, verbose=1)
         yhat_validation_unscaled = scalers[1][1].inverse_transform(yhat_validation)
         y_validation_unscaled = scalers[1][1].inverse_transform(y_validation)
         
@@ -162,18 +185,19 @@ class Model:
         print(error_table)
         print('###########################################################')
 
-        plt.subplots(figsize = (7,10))
+        plt.subplots(figsize=(7,10))
         plt.subplot(2,1,1)  
-        plt.plot(yhat_validation_unscaled, color='red', label = 'predicted')
-        plt.plot(y_validation_unscaled, color='blue', label = 'measured')
+        plt.plot(yhat_validation_unscaled, color='red', label='predicted')
+        plt.plot(y_validation_unscaled, color='blue', label='measured')
         plt.title('Validation Data')
         plt.legend()
         plt.subplot(2,1,2)
-        plt.plot(yhat_test_unscaled, color='red', label = 'predicted')
-        plt.plot(y_test_unscaled, color='blue', label = 'measured')
+        plt.plot(yhat_test_unscaled, color='red', label='predicted')
+        plt.plot(y_test_unscaled, color='blue', label='measured')
         plt.title('Test Data')
         plt.legend()
         plt.show()
         
         return train_mse, validation_mse, test_mse
-        
+
+    
