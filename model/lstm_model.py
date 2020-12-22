@@ -13,10 +13,9 @@ import tensorflow.python.util.deprecation as deprecation
 deprecation._PRINT_DEPRECATION_WARNINGS = False # used to hide deprecation warning raised by tensorflow
 
 def approx_loss(y_pred, params):
-    y_lower = tf.constant(params['y_l'], shape=(len(y_pred),))
-    y_upper = tf.constant(params['y_u'], shape=(len(y_pred),))
-    
-    return K.sum(K.relu(y_lower - y_pred) + K.relu(y_pred - y_upper))
+    y_lower = params['y_l']
+    y_upper = params['y_u']
+    return K.sum(K.relu(params['y_l'] - y_pred) + K.relu(y_pred - params['y_u']))
 
                  
 def combined_loss(params):
@@ -72,7 +71,7 @@ class Model:
         # --------- compile model ---------
         custom_loss = combined_loss(params)
         
-        model.compile( optimizer=params['optimizer'], loss=custom_loss, metrics=[params['metric']])
+        model.compile( optimizer=params['optimizer'], loss=custom_loss, metrics=['mse', params['metric']])
         
         # save model parameters
         self.model = model
