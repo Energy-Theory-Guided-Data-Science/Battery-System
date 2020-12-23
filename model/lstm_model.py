@@ -1,31 +1,93 @@
+"""
+Module containing a class modelling an LSTM network for voltage time series prediciton.
+"""
 import numpy as np
 import tensorflow as tf
 import matplotlib.pyplot as plt
 import sklearn.metrics as metrics
 
-from tensorflow import keras
 from tensorflow.keras import layers
-from tensorflow.keras import backend as K
-from tensorflow.keras.losses import mean_squared_error
+from tensorflow.keras import backend
+from tensorflow.keras import losses
 from tabulate import tabulate
 
 import tensorflow.python.util.deprecation as deprecation
-deprecation._PRINT_DEPRECATION_WARNINGS = False # used to hide deprecation warning raised by tensorflow
+# used to hide deprecation warning raised by tensorflow
+deprecation._PRINT_DEPRECATION_WARNINGS = False 
 
-def approx_loss(y_pred, params):
+
+def approximation_loss(y_pred, params):
+    """Computes the approximation loss as described in [1].
+
+    This loss term penalizes predictions which lay outside of the defined value range of the output.
+    The respective value range has to be set by the keys 'y_l' (lower end) and 'y_u' (upper end) in the params dictionary.
+
+    [1] http://people.cs.vt.edu/ramakris/papers/PID5657885.pdf
+
+    Args:
+        y_pred (numpy.ndarray):
+            An array of the predicted output values
+        params (dict): 
+            A dictionary containing the hyperparameters
+    Returns:
+        The approximation loss of the given predictions. Zero if the predictions follow the approximation constraint, positive if not.
+    """
     y_lower = params['y_l']
     y_upper = params['y_u']
-    return K.sum(K.relu(params['y_l'] - y_pred) + K.relu(y_pred - params['y_u']))
+    return backend.sum(backend.relu(params['y_l'] - y_pred) + backend.relu(y_pred - params['y_u']))
 
+def monotonicity_loss(y_true, y_pred):
+    """Computes the monotonicity loss as described in [1].
+    
+    This loss term penalizes predictions which are not monotonicaly accending or decending according to the behaviour of the ground truth.
+
+    [1] http://people.cs.vt.edu/ramakris/papers/PID5657885.pdf
+
+    Args:
+        y_true (numpy.ndarray): 
+            An array of the groundtruth output values
+        y_pred (numpy.ndarray): 
+            An array of the predicted output values
+    Returns:
+        The monotonicity loss of the given predictions. Zero if the predictions follow the monotonicity constraint, positive if not.
+    """
+    loss = 0
+    for i in range(len(y_true) - 1):
+        if y_true[i] < y_true[i+1] & y_pred[i] > y_pred[i+1]:
+            # monotonic accent 
+            loss += backend.relu(y_pred[i] - y_pred[i+1])
+        elif y_true[i] > y_true[i+1] & y_pred[i] < y_pred[i+1]:
+            # monotonic decent
+            loss += backend.relu(y_pred[i+1] - y_pred[i])
+    
+    return loss 
                  
-def combined_loss(params):
+def combine_losses(params):
+    """Combines multiple custom loss functions.
+
+    The loss functions provided by the 'loss_funcs' key in the params array will be combined in a weighted sum. 
+    Weights are determined by the respective 'lambda_xyz' key. 
+
+    Args:
+        params (dict): 
+            A dictionary containing the hyperparameters
+    Returns: 
+        The combined loss value.
+    """
     # wrapper function needed for the custom loss function to be accepted from keras
     def loss(y_true, y_pred):
-        data_based_loss = mean_squared_error(y_true, y_pred)
-        approximation_loss = approx_loss(y_pred, params)
-        lambda_A = params['lambda_A']
+        accumulated_loss = 0
+        loss_functions = params['loss_funcs']
 
-        return data_based_loss + lambda_A * approximation_loss
+        # !! add custom loss function here !!
+        if 'mse' in loss_functions:
+            accumulated_loss += params['lambda_mse'] * losses.mean_squared_error(y_true, y_pred)
+        if 'apx' in loss_functions:
+            accumulated_loss += params['lambda_apx'] * approximation_loss(y_pred, params)
+        if 'mon' in loss_functions:
+            accumulated_loss += params['lambda_mon'] * monotonicity_loss(y_true, y_pred)
+
+        return accumulated_loss
     return loss
 
 
@@ -57,7 +119,7 @@ class Model:
         """
         
         # --------- create model ---------
-        model = keras.Sequential()
+        model = tf.keras.Sequential()
         # layer 1
         model.add(layers.LSTM(units=params['n_lstm_units_1'], input_shape=(params['n_steps'], params['n_features']), return_sequences=True))
         model.add(layers.LeakyReLU(alpha=params['alpha_1']))
@@ -69,7 +131,7 @@ class Model:
         model.summary()
         
         # --------- compile model ---------
-        custom_loss = combined_loss(params)
+        custom_loss = combine_losses(params)
         
         model.compile( optimizer=params['optimizer'], loss=custom_loss, metrics=['mse', params['metric']])
         
