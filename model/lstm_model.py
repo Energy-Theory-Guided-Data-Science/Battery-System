@@ -36,6 +36,7 @@ def approximation_loss(y_pred, params):
     y_upper = params['y_u']
     return backend.sum(backend.relu(params['y_l'] - y_pred) + backend.relu(y_pred - params['y_u']))
 
+
 def monotonicity_loss(y_true, y_pred):
     """Computes the monotonicity loss as described in [1].
     
@@ -52,16 +53,18 @@ def monotonicity_loss(y_true, y_pred):
         The monotonicity loss of the given predictions. Zero if the predictions follow the monotonicity constraint, positive if not.
     """
     loss = 0
+        
     for i in range(len(y_true) - 1):
-        if y_true[i] < y_true[i+1] & y_pred[i] > y_pred[i+1]:
+        if y_true[i] < y_true[i+1] and y_pred[i] > y_pred[i+1]:
             # monotonic accent 
             loss += backend.relu(y_pred[i] - y_pred[i+1])
-        elif y_true[i] > y_true[i+1] & y_pred[i] < y_pred[i+1]:
+        elif y_true[i] > y_true[i+1] and y_pred[i] < y_pred[i+1]:
             # monotonic decent
             loss += backend.relu(y_pred[i+1] - y_pred[i])
     
-    return loss 
-                 
+    return loss
+
+
 def combine_losses(params):
     """Combines multiple custom loss functions.
 
@@ -133,7 +136,7 @@ class Model:
         # --------- compile model ---------
         custom_loss = combine_losses(params)
         
-        model.compile( optimizer=params['optimizer'], loss=custom_loss, metrics=['mse', params['metric']])
+        model.compile(run_eagerly=True, optimizer=params['optimizer'], loss=custom_loss, metrics=['mse', params['metric']])
         
         # save model parameters
         self.model = model
