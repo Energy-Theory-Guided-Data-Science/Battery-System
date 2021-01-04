@@ -165,15 +165,14 @@ class Model:
         
         # --------- visualize results ---------
         loss = history.history['loss']
-        metrics = history.history['mae']
+        mse = history.history['mse']
+        mae = history.history['mae']
         epochs = range(1,len(loss)+1)
         
-        plt.subplots(figsize=(5,5))
-        plt.subplot(2,1,1)
-        plt.plot(epochs,loss,'-o',label='training loss')
-        plt.legend()
-        plt.subplot(2,1,2)
-        plt.plot(epochs,metrics,'-o', color='green',label='absolute error')
+        plt.subplots(figsize=(8,5))
+        plt.plot(epochs, loss,'-o', color='green', label='training loss')
+        plt.plot(epochs, mse,'-o', color='blue', label='mean squared error')
+        plt.plot(epochs, mae,'-o', color='red',label='mean absolute error')
         plt.legend()
         plt.show()
         
