@@ -158,6 +158,9 @@ class Model:
             
             scalers (tuple):
                 The scaler objects which were used to scale X and y
+        Returns:
+            The matplotlib figure used to plot the visualization. This is needed so that the plots 
+            can be saved at the appropriate location.
         """
         
         # --------- train model ---------
@@ -169,7 +172,7 @@ class Model:
         mae = history.history['mae']
         epochs = range(1,len(loss)+1)
         
-        plt.subplots(figsize=(8,5))
+        fig, _ = plt.subplots(figsize=(8,5))
         plt.plot(epochs, loss,'-o', color='green', label='training loss')
         plt.plot(epochs, mse,'-o', color='blue', label='mean squared error')
         plt.plot(epochs, mae,'-o', color='red',label='mean absolute error')
@@ -179,7 +182,7 @@ class Model:
         # save parameters
         self.history = history
         self.scalers_train = scalers
-        return None
+        return fig
 
 
     def test(self, X_train, y_train, X_validation, y_validation, X_test, y_test, scalers):
@@ -211,7 +214,8 @@ class Model:
                 The scaler objects which were used to scale X and y in training, validation and test data
                 
         Returns:
-            A Tuple containin training, validation and test error (MSE)
+            A Tuple containing the predicted train, validation and test profiles. In adition the matplotlib figure 
+            used to plot the visualization is returned. This is needed so that the plots can be saved at the appropriate location.
         """
         
         # --------- predict on data ---------
@@ -248,7 +252,7 @@ class Model:
         print(error_table)
         print('###########################################################')
 
-        plt.subplots(figsize=(7,10))
+        fig,_ = plt.subplots(figsize=(7,10))
         plt.subplot(2,1,1)  
         plt.plot(yhat_validation_unscaled, color='red', label='predicted')
         plt.plot(y_validation_unscaled, color='blue', label='measured')
@@ -261,6 +265,6 @@ class Model:
         plt.legend()
         plt.show()
         
-        return train_mse, validation_mse, test_mse
+        return yhat_train_unscaled, yhat_validation_unscaled, yhat_test_unscaled, fig
 
     
