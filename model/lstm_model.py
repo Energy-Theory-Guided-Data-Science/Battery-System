@@ -1,13 +1,98 @@
+"""
+Module containing a class modelling an LSTM network for voltage time series prediciton.
+"""
 import numpy as np
+import tensorflow as tf
 import matplotlib.pyplot as plt
 import sklearn.metrics as metrics
 
-from tensorflow import keras
 from tensorflow.keras import layers
+from tensorflow.keras import backend
+from tensorflow.keras import losses
 from tabulate import tabulate
 
 import tensorflow.python.util.deprecation as deprecation
-deprecation._PRINT_DEPRECATION_WARNINGS = False # used to hide deprecation warning raised by tensorflow
+# used to hide deprecation warning raised by tensorflow
+deprecation._PRINT_DEPRECATION_WARNINGS = False 
+
+
+def approximation_loss(y_pred, params):
+    """Computes the approximation loss as described in [1].
+
+    This loss term penalizes predictions which lay outside of the defined value range of the output.
+    The respective value range has to be set by the keys 'y_l' (lower end) and 'y_u' (upper end) in the params dictionary.
+
+    [1] http://people.cs.vt.edu/ramakris/papers/PID5657885.pdf
+
+    Args:
+        y_pred (numpy.ndarray):
+            An array of the predicted output values
+        params (dict): 
+            A dictionary containing the hyperparameters
+    Returns:
+        The approximation loss of the given predictions. Zero if the predictions follow the approximation constraint, positive if not.
+    """
+    y_lower = params['y_l']
+    y_upper = params['y_u']
+    return backend.sum(backend.relu(params['y_l'] - y_pred) + backend.relu(y_pred - params['y_u']))
+
+
+def monotonicity_loss(y_true, y_pred):
+    """Computes the monotonicity loss as described in [1].
+    
+    This loss term penalizes predictions which are not monotonicaly accending or decending according to the behaviour of the ground truth.
+
+    [1] http://people.cs.vt.edu/ramakris/papers/PID5657885.pdf
+
+    Args:
+        y_true (numpy.ndarray): 
+            An array of the groundtruth output values
+        y_pred (numpy.ndarray): 
+            An array of the predicted output values
+    Returns:
+        The monotonicity loss of the given predictions. Zero if the predictions follow the monotonicity constraint, positive if not.
+    """
+    loss = 0
+        
+    for i in range(len(y_true) - 1):
+        if y_true[i] < y_true[i+1] and y_pred[i] > y_pred[i+1]:
+            # monotonic accent 
+            loss += backend.relu(y_pred[i] - y_pred[i+1])
+        elif y_true[i] > y_true[i+1] and y_pred[i] < y_pred[i+1]:
+            # monotonic decent
+            loss += backend.relu(y_pred[i+1] - y_pred[i])
+    
+    return loss
+
+
+def combine_losses(params):
+    """Combines multiple custom loss functions.
+
+    The loss functions provided by the 'loss_funcs' key in the params array will be combined in a weighted sum. 
+    Weights are determined by the respective 'lambda_xyz' key. 
+
+    Args:
+        params (dict): 
+            A dictionary containing the hyperparameters
+    Returns: 
+        The combined loss value.
+    """
+    # wrapper function needed for the custom loss function to be accepted from keras
+    def loss(y_true, y_pred):
+        accumulated_loss = 0
+        loss_functions = params['loss_funcs']
+
+        # !! add custom loss function here !!
+        if 'mse' in loss_functions:
+            accumulated_loss += params['lambda_mse'] * losses.mean_squared_error(y_true, y_pred)
+        if 'apx' in loss_functions:
+            accumulated_loss += params['lambda_apx'] * approximation_loss(y_pred, params)
+        if 'mon' in loss_functions:
+            accumulated_loss += params['lambda_mon'] * monotonicity_loss(y_true, y_pred)
+
+        return accumulated_loss
+    return loss
+
 
 class Model: 
     """Responsible for managing the neural network architecture which is used to predict voltage time series data.
@@ -37,7 +122,7 @@ class Model:
         """
         
         # --------- create model ---------
-        model = keras.Sequential()
+        model = tf.keras.Sequential()
         # layer 1
         model.add(layers.LSTM(units=params['n_lstm_units_1'], input_shape=(params['n_steps'], params['n_features']), return_sequences=True))
         model.add(layers.LeakyReLU(alpha=params['alpha_1']))
@@ -49,7 +134,9 @@ class Model:
         model.summary()
         
         # --------- compile model ---------
-        model.compile(optimizer = params['optimizer'], loss = params['loss'], metrics=[params['metric']])
+        custom_loss = combine_losses(params)
+        
+        model.compile(run_eagerly=True, optimizer=params['optimizer'], loss=custom_loss, metrics=['mse', params['metric']])
         
         # save model parameters
         self.model = model
@@ -71,29 +158,31 @@ class Model:
             
             scalers (tuple):
                 The scaler objects which were used to scale X and y
+        Returns:
+            The matplotlib figure used to plot the visualization. This is needed so that the plots 
+            can be saved at the appropriate location.
         """
         
         # --------- train model ---------
-        history = self.model.fit(X, y, epochs = self.params['n_epochs'], verbose = 1)
+        history = self.model.fit(X, y, epochs=self.params['n_epochs'], verbose=1)
         
         # --------- visualize results ---------
         loss = history.history['loss']
-        metrics = history.history['mae']
+        mse = history.history['mse']
+        mae = history.history['mae']
         epochs = range(1,len(loss)+1)
         
-        plt.subplots(figsize = (5,5))
-        plt.subplot(2,1,1)
-        plt.plot(epochs,loss,'-o',label='training loss')
-        plt.legend()
-        plt.subplot(2,1,2)
-        plt.plot(epochs,metrics,'-o', color='green',label='absolute error')
+        fig, _ = plt.subplots(figsize=(8,5))
+        plt.plot(epochs, loss,'-o', color='green', label='training loss')
+        plt.plot(epochs, mse,'-o', color='blue', label='mean squared error')
+        plt.plot(epochs, mae,'-o', color='red',label='mean absolute error')
         plt.legend()
         plt.show()
         
         # save parameters
         self.history = history
         self.scalers_train = scalers
-        return None
+        return fig
 
 
     def test(self, X_train, y_train, X_validation, y_validation, X_test, y_test, scalers):
@@ -125,15 +214,16 @@ class Model:
                 The scaler objects which were used to scale X and y in training, validation and test data
                 
         Returns:
-            A Tuple containin training, validation and test error (MSE)
+            A Tuple containing the predicted train, validation and test profiles. In adition the matplotlib figure 
+            used to plot the visualization is returned. This is needed so that the plots can be saved at the appropriate location.
         """
         
         # --------- predict on data ---------
-        yhat_train = self.model.predict(X_train, verbose = 1)
+        yhat_train = self.model.predict(X_train, verbose=1)
         yhat_train_unscaled = scalers[0][1].inverse_transform(yhat_train)
         y_train_unscaled = scalers[0][1].inverse_transform(y_train)
         
-        yhat_validation = self.model.predict(X_validation, verbose = 1)
+        yhat_validation = self.model.predict(X_validation, verbose=1)
         yhat_validation_unscaled = scalers[1][1].inverse_transform(yhat_validation)
         y_validation_unscaled = scalers[1][1].inverse_transform(y_validation)
         
@@ -162,18 +252,19 @@ class Model:
         print(error_table)
         print('###########################################################')
 
-        plt.subplots(figsize = (7,10))
+        fig,_ = plt.subplots(figsize=(7,10))
         plt.subplot(2,1,1)  
-        plt.plot(yhat_validation_unscaled, color='red', label = 'predicted')
-        plt.plot(y_validation_unscaled, color='blue', label = 'measured')
+        plt.plot(yhat_validation_unscaled, color='red', label='predicted')
+        plt.plot(y_validation_unscaled, color='blue', label='measured')
         plt.title('Validation Data')
         plt.legend()
         plt.subplot(2,1,2)
-        plt.plot(yhat_test_unscaled, color='red', label = 'predicted')
-        plt.plot(y_test_unscaled, color='blue', label = 'measured')
+        plt.plot(yhat_test_unscaled, color='red', label='predicted')
+        plt.plot(y_test_unscaled, color='blue', label='measured')
         plt.title('Test Data')
         plt.legend()
         plt.show()
         
-        return train_mse, validation_mse, test_mse
-        
+        return yhat_train_unscaled, yhat_validation_unscaled, yhat_test_unscaled, fig
+
+    

@@ -2,12 +2,9 @@
 Module containing different utility functions used for preprocessing time series data.
 """
 import numpy as np
-from sklearn import preprocessing
 from sklearn.preprocessing import MinMaxScaler
 from scipy import ndimage 
 from deprecated import deprecated
-
-import matplotlib.pyplot as plt # TODO: onyl used for debugging, should be removed
 
 def subsequences(sequence_X, sequence_y, n_steps):
     """Creates subsequences of the original sequences to fit the keras model structure.
@@ -155,7 +152,6 @@ def load_current_raw_data(profile):
     
     current_data = np.loadtxt('../data/fobss_data/data/' + profile + '/inverter/Inverter_Current.csv', delimiter=';')
     current_data = current_data[:,1] # only the first column includes necessary information
-    # plt.plot(current_data)  # TODO: to be removed
     return current_data
 
 
@@ -177,7 +173,6 @@ def load_voltage_raw_data(profile, slave, cell):
     """
     voltage_data = np.loadtxt('../data/fobss_data/data/' + profile + '/cells/Slave_' + str(slave) + '_Cell_Voltages.csv', delimiter=';')
     voltage_data = voltage_data[:,cell] # select correct cell out of slave data
-    # plt.plot(voltage_data)  # TODO: to be removed
     return voltage_data
 
 
@@ -223,11 +218,46 @@ def prepare_data(params, profiles, slave, cell):
     y = np.reshape(y, (-1, 1))
     X1 = X1.reshape(X1.shape[0], X1.shape[1], 1)
     
-#     plt.plot(current_cum_preprocessed) # TODO: to be removed
     X2, _ = subsequences(current_cum_preprocessed, voltage_preprocessed, params['n_steps'])
     X2 = X2.reshape(X2.shape[0], X2.shape[1], 1)
 
     X = np.append(X1, X2, axis=2)
+    print('Input:', X.shape, '\nOutput/Label:', y.shape)
+    
+    scalers = scaler_cur, scaler_volt
+    
+    return X, y, scalers
+
+def prepare_residual_data(params, profiles, slave, cell):
+    current_raw, voltage_raw = [], []
+    for profile in profiles:
+        current_raw = np.append(current_raw, load_current_raw_data(profile), axis=0)
+        voltage_raw = np.append(voltage_raw, load_voltage_raw_data(profile, slave, cell), axis=0)
+    
+    current_cum = np.cumsum(current_raw)
+    current_preprocessed, scaler_cur = preprocess_raw_data(params, current_raw)
+    current_cum_preprocessed, scaler_cur_cum = preprocess_raw_data(params, current_cum)
+    voltage_preprocessed, scaler_volt = preprocess_raw_data(params, voltage_raw)
+
+    if voltage_preprocessed.shape[0] != current_preprocessed.shape[0]:
+        current_preprocessed = align(current_preprocessed, voltage_preprocessed)
+        current_cum_preprocessed = align(current_cum_preprocessed, voltage_preprocessed)
+
+    X1, y = subsequences(current_preprocessed, voltage_preprocessed, params['n_steps'])
+    y = np.reshape(y, (-1, 1))
+    X1 = X1.reshape(X1.shape[0], X1.shape[1], 1)
+    X2, _ = subsequences(current_cum_preprocessed, voltage_preprocessed, params['n_steps'])
+    X2 = X2.reshape(X2.shape[0], X2.shape[1], 1)
+    
+    # add voltage computed by theory-based model
+    residual_data = np.load('trained_models/TGDS/9079/predictions.npy')
+    residual_preprocessed, scaler_res = preprocess_raw_data(params, residual_data)
+    
+    X3, _ = subsequences(residual_preprocessed, voltage_preprocessed, params['n_steps'])
+    X3 = X3.reshape(X3.shape[0], X3.shape[1], 1)
+    
+    X = np.append(X1, X2, axis=2)
+    X = np.append(X, X3, axis=2)
     print('Input:', X.shape, '\nOutput/Label:', y.shape)
     
     scalers = scaler_cur, scaler_volt
