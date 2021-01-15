@@ -1,5 +1,4 @@
 .DS_Store
-notebooks/.ipynb_checkpoints/*
 model/.ipynb_checkpoints/*
 model/others/.ipynb_checkpoints/*
 *.pyc
