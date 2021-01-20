@@ -228,7 +228,7 @@ def prepare_data(params, profiles, slave, cell):
     
     return X, y, scalers
 
-def prepare_residual_data(params, profiles, slave, cell):
+def prepare_hybrid_data(params, profiles, slave, cell):
     current_raw, voltage_raw = [], []
     for profile in profiles:
         current_raw = np.append(current_raw, load_current_raw_data(profile), axis=0)
