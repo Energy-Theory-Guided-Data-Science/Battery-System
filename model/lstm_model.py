@@ -5,6 +5,7 @@ import numpy as np
 import tensorflow as tf
 import matplotlib.pyplot as plt
 import sklearn.metrics as metrics
+import data_preprocessing as util
 
 from tensorflow.keras import layers
 from tensorflow.keras import backend
@@ -14,6 +15,12 @@ from tabulate import tabulate
 import tensorflow.python.util.deprecation as deprecation
 # used to hide deprecation warning raised by tensorflow
 deprecation._PRINT_DEPRECATION_WARNINGS = False 
+
+# ---------------------------------------------------- Custom Loss Functions ----------------------------------------------------
+
+# needed for residual loss computation
+lower_index = 0
+upper_index = 0
 
 
 def approximation_loss(y_pred, params):
@@ -93,12 +100,13 @@ def combine_losses(params):
         return accumulated_loss
     return loss
 
+# ---------------------------------------------------- LSTM Model  ----------------------------------------------------
 
 class Model: 
     """Responsible for managing the neural network architecture which is used to predict voltage time series data.
 
     Model is suited to work with the FOBSS data set (http://dbis.ipd.kit.edu/download/FOBSS_final.pdf) but can also be used with
-    different kinds of current and voltage data.
+    other kinds of current and voltage data.
 
     Attributes:
         model (tensorflow.python.keras.engine.sequential.Sequential): 
@@ -120,7 +128,6 @@ class Model:
             params (dict): 
                 A dictionary containing the hyperparameters
         """
-        
         # --------- create model ---------
         model = tf.keras.Sequential()
         # layer 1
@@ -135,15 +142,13 @@ class Model:
         
         # --------- compile model ---------
         custom_loss = combine_losses(params)
-        
         model.compile(run_eagerly=True, optimizer=params['optimizer'], loss=custom_loss, metrics=['mse', params['metric']])
         
         # save model parameters
         self.model = model
         self.params = params
         return None
-
-
+    
     def train(self, X, y, scalers):
         """Trains the LSTM model.
 
@@ -162,7 +167,6 @@ class Model:
             The matplotlib figure used to plot the visualization. This is needed so that the plots 
             can be saved at the appropriate location.
         """
-        
         # --------- train model ---------
         history = self.model.fit(X, y, epochs=self.params['n_epochs'], verbose=1)
         
@@ -217,7 +221,6 @@ class Model:
             A Tuple containing the predicted train, validation and test profiles. In adition the matplotlib figure 
             used to plot the visualization is returned. This is needed so that the plots can be saved at the appropriate location.
         """
-        
         # --------- predict on data ---------
         yhat_train = self.model.predict(X_train, verbose=1)
         yhat_train_unscaled = scalers[0][1].inverse_transform(yhat_train)
@@ -266,5 +269,180 @@ class Model:
         plt.show()
         
         return yhat_train_unscaled, yhat_validation_unscaled, yhat_test_unscaled, fig
+
+# ---------------------------------------------------- Residual LSTM Model ----------------------------------------------------
+
+def residual_loss(params, u_pred):
+    """Wrapper function for residual loss.
+
+    Args:
+        params (dict): 
+            A dictionary containing the hyperparameters
+        u_pred (numpy.ndarray): 
+            The predictions made by the theory-based model
+    Returns: 
+        The residual loss
+    """
+    # wrapper function needed for the custom loss function to be accepted from keras
+    def loss(y_true, y_pred):
+        global lower_index
+        global upper_index
+        lower_index = upper_index
+        upper_index += y_true.shape[0]
+
+        u_pred_sliced = u_pred[lower_index:upper_index]
+        delta = y_true - u_pred_sliced
+        
+#         print(delta)
+#         print(y_pred)
+        return losses.mean_squared_error(y_pred, delta)
+    return loss
+
+class Residual_Model: 
+    """Responsible for managing the neural network architecture which is used for residual learning. 
+    The goal is to predict the gap between the theory-based model and the ground-truth, not the voltage itself.
+
+    Residual_Model is suited to work with the FOBSS data set (http://dbis.ipd.kit.edu/download/FOBSS_final.pdf) but can also be used with
+    other kinds of current and voltage data.
+
+    Attributes:
+        model (tensorflow.python.keras.engine.sequential.Sequential): 
+            A keras object representing the compiled model
+            
+        params (dict): 
+            A dictionary containing the hyperparameters
+            
+        history (tensorflow.python.keras.callbacks.History): 
+            A report of the training procedure
+    """
+    
+    def initialize(self, params):
+        """Initializes the residual LSTM model.
+
+        For visualization purposes, a summary of the model will be printed.
+
+        Args:
+            params (dict): 
+                A dictionary containing the hyperparameters
+        """
+        
+        # --------- create model ---------
+        model = tf.keras.Sequential()
+        # layer 1
+        model.add(layers.LSTM(units=params['n_lstm_units_1'], input_shape=(params['n_steps'], params['n_features']), return_sequences=True))
+        model.add(layers.LeakyReLU(alpha=params['alpha_1']))
+        # layer 2
+        model.add(layers.LSTM(units=params['n_lstm_units_2']))
+        model.add(layers.LeakyReLU(alpha=params['alpha_1']))
+        # output layer
+        model.add(layers.Dense(1, activation=params['activation']))
+        model.summary()
+        
+        # --------- compile model ---------
+        # load residual data for specific profile
+        u_pred = np.load('trained_models/TGDS/9079/predictions.npy') # TODO: change this to the appropriate EC-Model path
+        u_pred = np.repeat(u_pred, params['n_epochs'])
+        u_pred_preprocessed, scaler_res = util.preprocess_raw_data(params, u_pred)
+
+        custom_loss = residual_loss(params, u_pred_preprocessed)
+        
+        model.compile(run_eagerly=True, optimizer=params['optimizer'], loss=custom_loss)
+        
+        # save model parameters
+        self.model = model
+        self.params = params
+        return None
+    
+    def train(self, X, y, scalers):
+        """Trains the residual LSTM model.
+
+        For visualization purposes, the training error over all epochs will be ploted.
+
+        Args:
+            X (numpy.ndarray): 
+                The input data
+                
+            y (numpy.ndarray): 
+                The groundtruth output data
+            
+            scalers (tuple):
+                The scaler objects which were used to scale X and y
+        Returns:
+            The matplotlib figure used to plot the visualization. This is needed so that the plots 
+            can be saved at the appropriate location.
+        """
+        
+        # --------- train model ---------
+        history = self.model.fit(X, y, epochs=self.params['n_epochs'], verbose=1)
+        
+        # --------- visualize results ---------
+        loss = history.history['loss'] 
+        epochs = range(1,len(loss)+1)
+        
+        fig, _ = plt.subplots(figsize=(8,5))
+        plt.plot(epochs, loss,'-o', color='green', label='training loss')
+        plt.legend()
+        plt.show()
+        
+        # save parameters
+        self.history = history
+        self.scalers_train = scalers
+        return fig
+    
+    def test(self, X_train, y_train, scalers):
+        """Tests the residual LSTM model on test data.
+
+        For visualization purposes, a table with several metrics for the training data 
+        will be printed in adition to plots of the used profile.
+
+        Args:
+            X_train (numpy.ndarray):
+                The training input data used in Model.train()
+
+            y_train (numpy.ndarray):
+                The training output data used in Model.train()
+
+            scalers (tuple):
+                The scaler objects which were used to scale X and y in training and test data
+
+        Returns:
+            A Tuple containing the error of the prediction on training data. In adition the matplotlib figure 
+            used to plot the visualization is returned. This is needed so that the plots can be saved at the appropriate location.
+        """
+        # load residual data for specific profile
+        u_pred = np.load('trained_models/TGDS/9079/predictions.npy') # TODO: change this to the appropriate EC-Model path
+        plt.plot(u_pred)
+
+        # --------- predict on data ---------
+        yhat_train = self.model.predict(X_train, verbose=1)
+        yhat_train_unscaled = scalers[0][1].inverse_transform(yhat_train)
+        y_train_unscaled = scalers[0][1].inverse_transform(y_train)
+        
+        # combine gap prediction with theory-based output
+        yhat = u_pred + yhat_train 
+
+        # --------- compute error ---------
+        train_mse = metrics.mean_squared_error(y_train_unscaled, yhat)
+        train_mae = metrics.mean_absolute_error(y_train_unscaled, yhat)
+        train_max = metrics.max_error(y_train_unscaled, yhat)
+
+        # --------- visualize results ---------
+        print('###########################################################')
+        error_table = tabulate([['MSE', round(train_mse, 6)], 
+          ['MAE', round(train_mae, 4)], 
+          ['MaxE', round(train_max, 4)]], headers=['Training', 'Validation', 'Test'])
+        print(error_table)
+        print('###########################################################')
+        
+        fig,_ = plt.subplots(figsize=(7,10))
+        # plt.plot(yhat_train, color='red', label='predicted')
+        plt.plot(yhat, color='red', label='predicted + theory')
+        plt.plot(y_train, color='blue', label='measured')
+        plt.plot(u_pred, color='green', label='theory')
+        plt.title('Training Data')
+        plt.legend()
+        plt.show()
+
+        return yhat_train_unscaled, fig
 
     

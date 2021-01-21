@@ -250,10 +250,10 @@ def prepare_hybrid_data(params, profiles, slave, cell):
     X2 = X2.reshape(X2.shape[0], X2.shape[1], 1)
     
     # add voltage computed by theory-based model
-    residual_data = np.load('trained_models/TGDS/9079/predictions.npy')
-    residual_preprocessed, scaler_res = preprocess_raw_data(params, residual_data)
+    theory_data = np.load('trained_models/TGDS/9079/predictions.npy') # TODO: change this to the appropriate EC-Model path
+    theory_preprocessed, scaler_res = preprocess_raw_data(params, theory_data)
     
-    X3, _ = subsequences(residual_preprocessed, voltage_preprocessed, params['n_steps'])
+    X3, _ = subsequences(theory_preprocessed, voltage_preprocessed, params['n_steps'])
     X3 = X3.reshape(X3.shape[0], X3.shape[1], 1)
     
     X = np.append(X1, X2, axis=2)
