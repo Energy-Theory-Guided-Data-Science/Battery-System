@@ -5,6 +5,7 @@ import time
 import numpy as np
 import tensorflow as tf
 import matplotlib.pyplot as plt
+import matplotlib.mlab as mlab
 import sklearn.metrics as metrics
 import data_preprocessing as util
 
@@ -284,7 +285,8 @@ class Model:
         print(error_table)
         print('###########################################################')
         
-        time = np.arange(yhat_train.shape[0]) * 0.25
+        time = np.arange(yhat_test_unscaled.shape[0]) * 0.25
+        delta = np.abs(yhat_test_unscaled - y_test_unscaled)
         
         fig,_ = plt.subplots(figsize=(7,10))
 #         plt.subplot(2,1,1)
@@ -293,15 +295,18 @@ class Model:
 #         plt.plot(time, y_validation_unscaled, color='blue', label='measured')
 #         plt.title('Validation Data')
 #         plt.legend()
-        plt.subplot(2,1,2)
-        time = np.arange(yhat_test_unscaled.shape[0]) * 0.25
+        plt.subplot(2,1,1)
         plt.plot(time, yhat_test_unscaled, color='red', label='predicted')
         plt.plot(time, y_test_unscaled, color='blue', label='measured')
         plt.title('Test Data')
         plt.legend()
+        plt.subplot(2,1,2)
+        plt.plot(time, delta, color='m', label='predicted - measured')
+        plt.title('Absolute Error')
+        plt.legend()
         plt.show()
         
-        return yhat_train_unscaled, yhat_validation_unscaled, yhat_test_unscaled, fig
+        return yhat_train_unscaled, yhat_validation_unscaled, yhat_test_unscaled, delta, time, fig
 
 # ---------------------------------------------------- Residual LSTM Model ----------------------------------------------------
 
@@ -448,7 +453,8 @@ class Residual_Model:
         plt.plot(u_pred)
 
         # --------- predict on data ---------
-        yhat_train = self.model.predict(X_train, verbose=1)
+        time_callback = TimeHistory()
+        yhat_train = self.model.predict(X_train, callbacks=[time_callback], verbose=1)
         yhat_train_unscaled = scalers[0][1].inverse_transform(yhat_train)
         y_train_unscaled = scalers[0][1].inverse_transform(y_train)
         
@@ -468,17 +474,25 @@ class Residual_Model:
         print(error_table)
         print('###########################################################')
         
+        print('Training time:', np.sum(time_callback.times))
+        
+        time = np.arange(yhat_train.shape[0]) * 0.25
+        delta = np.abs(yhat_train_unscaled - y_train_unscaled)
         
         fig,_ = plt.subplots(figsize=(7,10))
-        time = np.arange(yhat_train.shape[0]) * 0.25
+        plt.subplot(1,2,1)
         # plt.plot(time, yhat_train, color='red', label='predicted')
         plt.plot(time, yhat, color='red', label='predicted + theory')
         plt.plot(time, y_train, color='blue', label='measured')
         plt.plot(time, u_pred, color='green', label='theory')
         plt.title('Training Data')
         plt.legend()
+        plt.subplot(1,2,2)
+        plt.plot(time, delta, color='m', label='predicted - measured')
+        plt.title('Absolute Error')
+        plt.legend()
         plt.show()
-
+        
         return yhat_train_unscaled, fig
 
     
