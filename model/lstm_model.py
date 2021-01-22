@@ -1,6 +1,7 @@
 """
 Module containing a class modelling an LSTM network for voltage time series prediciton.
 """
+import time
 import numpy as np
 import tensorflow as tf
 import matplotlib.pyplot as plt
@@ -10,11 +11,30 @@ import data_preprocessing as util
 from tensorflow.keras import layers
 from tensorflow.keras import backend
 from tensorflow.keras import losses
+from tensorflow.keras import callbacks
 from tabulate import tabulate
 
 import tensorflow.python.util.deprecation as deprecation
 # used to hide deprecation warning raised by tensorflow
 deprecation._PRINT_DEPRECATION_WARNINGS = False 
+
+# ---------------------------------------------------- Callbacks ----------------------------------------------------
+class TimeHistory(callbacks.Callback):
+    def on_train_begin(self, logs={}):
+        self.times = []
+
+    def on_epoch_begin(self, epoch, logs={}):
+        self.epoch_time_start = time.time()
+
+    def on_epoch_end(self, epoch, logs={}):
+        self.times.append(time.time() - self.epoch_time_start)
+        
+    def on_predict_begin(self, logs={}):
+        self.times = []
+        self.epoch_time_start = time.time()
+
+    def on_predict_end(self, logs={}):
+        self.times.append(time.time() - self.epoch_time_start)
 
 # ---------------------------------------------------- Custom Loss Functions ----------------------------------------------------
 
@@ -118,7 +138,7 @@ class Model:
         history (tensorflow.python.keras.callbacks.History): 
             A report of the training procedure
     """
-    
+   
     def initialize(self, params):
         """Initializes the LSTM model.
 
@@ -164,17 +184,20 @@ class Model:
             scalers (tuple):
                 The scaler objects which were used to scale X and y
         Returns:
-            The matplotlib figure used to plot the visualization. This is needed so that the plots 
-            can be saved at the appropriate location.
+            The time_callback which is used to measure the time needed to train the model. In adition the matplotlib 
+            figure used to plot the visualization. This is needed so that the plots can be saved at the appropriate location.
         """
         # --------- train model ---------
-        history = self.model.fit(X, y, epochs=self.params['n_epochs'], verbose=1)
+        time_callback = TimeHistory()
+        history = self.model.fit(X, y, epochs=self.params['n_epochs'], callbacks=[time_callback], verbose=1)
         
         # --------- visualize results ---------
         loss = history.history['loss']
         mse = history.history['mse']
         mae = history.history['mae']
         epochs = range(1,len(loss)+1)
+        
+        print('Training time:', str(round(np.sum(time_callback.times), 3)) +'s')
         
         fig, _ = plt.subplots(figsize=(8,5))
         plt.plot(epochs, loss,'-o', color='green', label='training loss')
@@ -186,7 +209,7 @@ class Model:
         # save parameters
         self.history = history
         self.scalers_train = scalers
-        return fig
+        return time_callback, fig
 
 
     def test(self, X_train, y_train, X_validation, y_validation, X_test, y_test, scalers):
@@ -222,17 +245,23 @@ class Model:
             used to plot the visualization is returned. This is needed so that the plots can be saved at the appropriate location.
         """
         # --------- predict on data ---------
-        yhat_train = self.model.predict(X_train, verbose=1)
+        time_train = TimeHistory()
+        yhat_train = self.model.predict(X_train, callbacks=[time_train], verbose=1)
         yhat_train_unscaled = scalers[0][1].inverse_transform(yhat_train)
         y_train_unscaled = scalers[0][1].inverse_transform(y_train)
+        print('Prediction time on Training Set: ', str(round(np.sum(time_train.times), 3)) + 's')
         
-        yhat_validation = self.model.predict(X_validation, verbose=1)
+        time_val = TimeHistory()
+        yhat_validation = self.model.predict(X_validation, callbacks=[time_val], verbose=1)
         yhat_validation_unscaled = scalers[1][1].inverse_transform(yhat_validation)
         y_validation_unscaled = scalers[1][1].inverse_transform(y_validation)
+        print('Prediction time on Validation Set: ', str(round(np.sum(time_val.times), 3)) + 's')
         
-        yhat_test = self.model.predict(X_test, verbose = 1)
+        time_test = TimeHistory()
+        yhat_test = self.model.predict(X_test, callbacks=[time_test], verbose = 1)
         yhat_test_unscaled = scalers[2][1].inverse_transform(yhat_test)
         y_test_unscaled = scalers[2][1].inverse_transform(y_test)
+        print('Prediction time on Test Set: ', str(round(np.sum(time_test.times), 3)) + 's')
 
         # --------- compute error ---------
         train_mse = metrics.mean_squared_error(y_train_unscaled, yhat_train_unscaled)
@@ -254,16 +283,20 @@ class Model:
           ['MaxE', round(train_max, 4), round(validation_max, 4), round(test_max, 4)]], headers=['Training', 'Validation', 'Test'])
         print(error_table)
         print('###########################################################')
-
+        
+        time = np.arange(yhat_train.shape[0]) * 0.25
+        
         fig,_ = plt.subplots(figsize=(7,10))
-        plt.subplot(2,1,1)  
-        plt.plot(yhat_validation_unscaled, color='red', label='predicted')
-        plt.plot(y_validation_unscaled, color='blue', label='measured')
-        plt.title('Validation Data')
-        plt.legend()
+#         plt.subplot(2,1,1)
+#         time = np.arange(yhat_validation_unscaled.shape[0]) * 0.25
+#         plt.plot(time, yhat_validation_unscaled, color='red', label='predicted')
+#         plt.plot(time, y_validation_unscaled, color='blue', label='measured')
+#         plt.title('Validation Data')
+#         plt.legend()
         plt.subplot(2,1,2)
-        plt.plot(yhat_test_unscaled, color='red', label='predicted')
-        plt.plot(y_test_unscaled, color='blue', label='measured')
+        time = np.arange(yhat_test_unscaled.shape[0]) * 0.25
+        plt.plot(time, yhat_test_unscaled, color='red', label='predicted')
+        plt.plot(time, y_test_unscaled, color='blue', label='measured')
         plt.title('Test Data')
         plt.legend()
         plt.show()
@@ -292,9 +325,7 @@ def residual_loss(params, u_pred):
 
         u_pred_sliced = u_pred[lower_index:upper_index]
         delta = y_true - u_pred_sliced
-        
-#         print(delta)
-#         print(y_pred)
+
         return losses.mean_squared_error(y_pred, delta)
     return loss
 
@@ -315,7 +346,7 @@ class Residual_Model:
         history (tensorflow.python.keras.callbacks.History): 
             A report of the training procedure
     """
-    
+      
     def initialize(self, params):
         """Initializes the residual LSTM model.
 
@@ -368,16 +399,19 @@ class Residual_Model:
             scalers (tuple):
                 The scaler objects which were used to scale X and y
         Returns:
-            The matplotlib figure used to plot the visualization. This is needed so that the plots 
-            can be saved at the appropriate location.
+            The time_callback which is used to measure the time needed to train the model. In adition the matplotlib 
+            figure used to plot the visualization. This is needed so that the plots can be saved at the appropriate location.
         """
         
         # --------- train model ---------
-        history = self.model.fit(X, y, epochs=self.params['n_epochs'], verbose=1)
+        time_callback = TimeHistory()
+        history = self.model.fit(X, y, epochs=self.params['n_epochs'], callbacks=[time_callback], verbose=1)
         
         # --------- visualize results ---------
         loss = history.history['loss'] 
         epochs = range(1,len(loss)+1)
+        
+        print('Training time:', np.sum(time_callback.times))
         
         fig, _ = plt.subplots(figsize=(8,5))
         plt.plot(epochs, loss,'-o', color='green', label='training loss')
@@ -387,7 +421,7 @@ class Residual_Model:
         # save parameters
         self.history = history
         self.scalers_train = scalers
-        return fig
+        return time_callback, fig
     
     def test(self, X_train, y_train, scalers):
         """Tests the residual LSTM model on test data.
@@ -434,11 +468,13 @@ class Residual_Model:
         print(error_table)
         print('###########################################################')
         
+        
         fig,_ = plt.subplots(figsize=(7,10))
-        # plt.plot(yhat_train, color='red', label='predicted')
-        plt.plot(yhat, color='red', label='predicted + theory')
-        plt.plot(y_train, color='blue', label='measured')
-        plt.plot(u_pred, color='green', label='theory')
+        time = np.arange(yhat_train.shape[0]) * 0.25
+        # plt.plot(time, yhat_train, color='red', label='predicted')
+        plt.plot(time, yhat, color='red', label='predicted + theory')
+        plt.plot(time, y_train, color='blue', label='measured')
+        plt.plot(time, u_pred, color='green', label='theory')
         plt.title('Training Data')
         plt.legend()
         plt.show()
