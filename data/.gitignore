@@ -1,3 +1,4 @@
 *
 !.gitignore
 !fobss_preprocessing_script.ipynb
+!soc_ocv/
