@@ -279,7 +279,7 @@ class Model:
         
         # --------- visualize results ---------
         print('###########################################################')
-        error_table = tabulate([['MSE', round(train_mse, 6), round(validation_mse, 6), round(test_mse, 6)], 
+        error_table = tabulate([['MSE', round(train_mse, 8), round(validation_mse, 8), round(test_mse, 8)], 
           ['MAE', round(train_mae, 4), round(validation_mae, 4), round(test_mae, 4)], 
           ['MaxE', round(train_max, 4), round(validation_max, 4), round(test_max, 4)]], headers=['Training', 'Validation', 'Test'])
         print(error_table)
@@ -471,7 +471,7 @@ class Residual_Model:
 
         # --------- visualize results ---------
         print('###########################################################')
-        error_table = tabulate([['MSE', round(train_mse, 6)], 
+        error_table = tabulate([['MSE', round(train_mse, 8)], 
           ['MAE', round(train_mae, 4)], 
           ['MaxE', round(train_max, 4)]], headers=['Training', 'Validation', 'Test'])
         print(error_table)
