@@ -319,6 +319,57 @@ class Model:
         
         return yhat_train_unscaled, yhat_validation_unscaled, yhat_test_unscaled, delta, time, fig
 
+
+    def test_usecases(self, X_train, y_train, X_test_1, y_test_1, X_test_2, y_test_2, X_test_3, y_test_3, scalers):
+        # --------- predict on data ---------
+        time_train = TimeHistory()
+        yhat_train = self.model.predict(X_train, callbacks=[time_train], verbose=1)
+        yhat_train_unscaled = scalers[0][1].inverse_transform(yhat_train)
+        y_train_unscaled = scalers[0][1].inverse_transform(y_train)
+        print('Prediction time on Training Set: ', str(round(np.sum(time_train.times), 3)) + 's')
+        
+        time_test_1 = TimeHistory()
+        yhat_test_1 = self.model.predict(X_test_1, callbacks=[time_test_1], verbose=1)
+        yhat_test_1_unscaled = scalers[1][1].inverse_transform(yhat_test_1)
+        y_test_1_unscaled = scalers[1][1].inverse_transform(y_test_1)
+        print('Prediction time on Use Case 1: ', str(round(np.sum(time_test_1.times), 3)) + 's')
+        
+        time_test_2 = TimeHistory()
+        yhat_test_2 = self.model.predict(X_test_2, callbacks=[time_test_2], verbose=1)
+        yhat_test_2_unscaled = scalers[2][1].inverse_transform(yhat_test_2)
+        y_test_2_unscaled = scalers[2][1].inverse_transform(y_test_2)
+        print('Prediction time on Use Case 2: ', str(round(np.sum(time_test_2.times), 3)) + 's')
+
+        time_test_3 = TimeHistory()
+        yhat_test_3 = self.model.predict(X_test_3, callbacks=[time_test_3], verbose=1)
+        yhat_test_3_unscaled = scalers[3][1].inverse_transform(yhat_test_3)
+        y_test_3_unscaled = scalers[3][1].inverse_transform(y_test_3)
+        print('Prediction time on Use Case 3: ', str(round(np.sum(time_test_3.times), 3)) + 's')
+
+        # --------- compute error ---------
+        train_mse = metrics.mean_squared_error(y_train_unscaled, yhat_train_unscaled)
+        test_1_mse = metrics.mean_squared_error(y_test_1_unscaled, yhat_test_1_unscaled)
+        test_2_mse = metrics.mean_squared_error(y_test_2_unscaled, yhat_test_2_unscaled)
+        test_3_mse = metrics.mean_squared_error(y_test_3_unscaled, yhat_test_3_unscaled)
+
+        train_mae = metrics.mean_absolute_error(y_train_unscaled, yhat_train_unscaled)
+        test_1_mae = metrics.mean_absolute_error(y_test_1_unscaled, yhat_test_1_unscaled)
+        test_2_mae = metrics.mean_absolute_error(y_test_2_unscaled, yhat_test_2_unscaled)
+        test_3_mae = metrics.mean_absolute_error(y_test_3_unscaled, yhat_test_3_unscaled)
+        
+        train_max = metrics.max_error(y_train_unscaled, yhat_train_unscaled)
+        test_1_max = metrics.max_error(y_test_1_unscaled, yhat_test_1_unscaled)
+        test_2_max = metrics.max_error(y_test_2_unscaled, yhat_test_2_unscaled)
+        test_3_max = metrics.max_error(y_test_3_unscaled, yhat_test_3_unscaled)
+        
+        # --------- visualize results ---------
+        print('##############################################################')
+        error_table = tabulate([['MSE (\u03BCV)', round(train_mse, 7) * 1000000, round(test_1_mse, 7) * 1000000, round(test_2_mse, 7) * 1000000, round(test_3_mse, 7) * 1000000], 
+          ['MAE (V)', round(train_mae, 4), round(test_1_mae, 4), round(test_2_mae, 4), round(test_3_mae, 4)], 
+          ['MaxE (V)', round(train_max, 4), round(test_1_max, 4), round(test_2_max, 4), round(test_3_max, 4)]], headers=['Training', 'Use Case 1', 'Use Case 2', 'Use Case 3'])
+        print(error_table)
+        print('##############################################################')
+    
 # ---------------------------------------------------- Residual LSTM Model ----------------------------------------------------
 # needed for residual loss computation
     lower_index_res = 0
