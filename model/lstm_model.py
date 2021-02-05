@@ -39,12 +39,7 @@ class TimeHistory(callbacks.Callback):
 
 # ---------------------------------------------------- Custom Loss Functions ----------------------------------------------------
 
-# needed for residual loss computation
-lower_index = 0
-upper_index = 0
-
-
-def approximation_loss(y_pred, params):
+def approximation_loss(y_true, y_pred):
     """Computes the approximation loss as described in [1].
 
     This loss term penalizes predictions which lay outside of the defined value range of the output.
@@ -60,9 +55,14 @@ def approximation_loss(y_pred, params):
     Returns:
         The approximation loss of the given predictions. Zero if the predictions follow the approximation constraint, positive if not.
     """
-    y_lower = params['y_l']
-    y_upper = params['y_u']
-    return backend.sum(backend.relu(params['y_l'] - y_pred) + backend.relu(y_pred - params['y_u']))
+    y_lower = backend.min(y_true)
+    y_upper = backend.max(y_true)
+    loss = backend.sum(backend.relu(y_lower - y_pred) + backend.relu(y_pred - y_upper))
+    
+    # to visualize loss during training
+    if (loss.numpy() != 0,0):
+        print(' - apx:', loss.numpy())
+    return loss
 
 
 def monotonicity_loss(y_true, y_pred):
@@ -81,15 +81,22 @@ def monotonicity_loss(y_true, y_pred):
         The monotonicity loss of the given predictions. Zero if the predictions follow the monotonicity constraint, positive if not.
     """
     loss = 0
-        
+    loss_changed = False
+
     for i in range(len(y_true) - 1):
-        if y_true[i] < y_true[i+1] and y_pred[i] > y_pred[i+1]:
+        if y_true[i] < y_true[i+1] and y_pred[i] >= y_pred[i+1]:
             # monotonic accent 
-            loss += backend.relu(y_pred[i] - y_pred[i+1])
-        elif y_true[i] > y_true[i+1] and y_pred[i] < y_pred[i+1]:
+            loss += backend.abs(y_pred[i] - y_pred[i+1])
+            loss_changed = True
+            
+        elif y_true[i] > y_true[i+1] and y_pred[i] <= y_pred[i+1]:
             # monotonic decent
-            loss += backend.relu(y_pred[i+1] - y_pred[i])
-    
+            loss += backend.abs(y_pred[i+1] - y_pred[i])
+            loss_changed = True
+  
+    if (loss_changed):
+        print(' - mon:', loss.numpy()[0])
+
     return loss
 
 
@@ -114,7 +121,7 @@ def combine_losses(params):
         if 'mse' in loss_functions:
             accumulated_loss += params['lambda_mse'] * losses.mean_squared_error(y_true, y_pred)
         if 'apx' in loss_functions:
-            accumulated_loss += params['lambda_apx'] * approximation_loss(y_pred, params)
+            accumulated_loss += params['lambda_apx'] * approximation_loss(y_true, y_pred)
         if 'mon' in loss_functions:
             accumulated_loss += params['lambda_mon'] * monotonicity_loss(y_true, y_pred)
 
@@ -158,11 +165,12 @@ class Model:
         model.add(layers.LSTM(units=params['n_lstm_units_2']))
         model.add(layers.LeakyReLU(alpha=params['alpha_1']))
         # output layer
-        model.add(layers.Dense(1, activation=params['activation']))
+        model.add(layers.Dense(1, activation=params['activation_output_layer']))
         model.summary()
         
         # --------- compile model ---------
         custom_loss = combine_losses(params)
+        
         model.compile(run_eagerly=True, optimizer=params['optimizer'], loss=custom_loss, metrics=['mse', params['metric']])
         
         # save model parameters
@@ -279,9 +287,9 @@ class Model:
         
         # --------- visualize results ---------
         print('###########################################################')
-        error_table = tabulate([['MSE', round(train_mse, 8), round(validation_mse, 8), round(test_mse, 8)], 
-          ['MAE', round(train_mae, 4), round(validation_mae, 4), round(test_mae, 4)], 
-          ['MaxE', round(train_max, 4), round(validation_max, 4), round(test_max, 4)]], headers=['Training', 'Validation', 'Test'])
+        error_table = tabulate([['MSE (\u03BCV)', round(train_mse, 7) * 1000000, round(validation_mse, 7) * 1000000, round(test_mse, 7) * 1000000], 
+          ['MAE (V)', round(train_mae, 4), round(validation_mae, 4), round(test_mae, 4)], 
+          ['MaxE (V)', round(train_max, 4), round(validation_max, 4), round(test_max, 4)]], headers=['Training', 'Validation', 'Test'])
         print(error_table)
         print('###########################################################')
         
@@ -312,7 +320,9 @@ class Model:
         return yhat_train_unscaled, yhat_validation_unscaled, yhat_test_unscaled, delta, time, fig
 
 # ---------------------------------------------------- Residual LSTM Model ----------------------------------------------------
-
+# needed for residual loss computation
+    lower_index_res = 0
+    upper_index_res = 0
 def residual_loss(params, u_pred):
     """Wrapper function for residual loss.
 
@@ -326,12 +336,12 @@ def residual_loss(params, u_pred):
     """
     # wrapper function needed for the custom loss function to be accepted from keras
     def loss(y_true, y_pred):
-        global lower_index
-        global upper_index
-        lower_index = upper_index
-        upper_index += y_true.shape[0]
+        global lower_index_res
+        global upper_index_res
+        lower_index_res = upper_index_res
+        upper_index_res += y_true.shape[0]
 
-        u_pred_sliced = u_pred[lower_index:upper_index]
+        u_pred_sliced = u_pred[lower_index_res:upper_index_res]
         delta = y_true - u_pred_sliced
 
         return losses.mean_squared_error(y_pred, delta)
