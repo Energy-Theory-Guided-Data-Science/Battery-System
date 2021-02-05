@@ -130,7 +130,7 @@ def preprocess_raw_data(params, sequence):
     sequence = smooth(sequence, params['gauss_sigma'])
     sequence = np.reshape(sequence, (-1, 1))
     
-    scaler = MinMaxScaler(feature_range = (-1, 1))
+    scaler = MinMaxScaler(feature_range = (params['feature_range_low'], params['feature_range_high']))
     scaler.fit(sequence)
     sequence = scaler.transform(sequence)
     
