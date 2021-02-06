@@ -8,6 +8,8 @@ from deprecated import deprecated
 
 def subsequences(sequence_X, sequence_y, n_steps):
     """Creates subsequences of the original sequences to fit the keras model structure.
+    
+    It is recommended to align the sequences first with util.align().
  
     Args:
         sequence_1 (numpy.ndarray): 
@@ -264,7 +266,7 @@ def prepare_hybrid_data(params, profiles, slave, cell):
     current_cum_preprocessed, scaler_cur_cum = preprocess_raw_data(params, current_cum)
     voltage_preprocessed, scaler_volt = preprocess_raw_data(params, voltage_raw)
 
-    if voltage_preprocessed.shape[0] != current_preprocessed.shape[0]:
+    if (voltage_preprocessed.shape[0] != current_preprocessed.shape[0]):
         current_preprocessed = align(current_preprocessed, voltage_preprocessed)
         current_cum_preprocessed = align(current_cum_preprocessed, voltage_preprocessed)
 
@@ -279,9 +281,9 @@ def prepare_hybrid_data(params, profiles, slave, cell):
     if (profiles[0] == 'Profile 10A'):
         theory_data = np.load('trained_models/TGDS/hybrid/predictions_10A.npy') 
     elif (profiles[0] == 'Profile 10A 3x'):
-         theory_data = np.load('trained_models/TGDS/hybrid/predictions_10A_3x.npy') 
+        theory_data = np.load('trained_models/TGDS/hybrid/predictions_10A_3x.npy') 
     elif (profiles[0] == 'Profile -10A'):
-         theory_data = np.load('trained_models/TGDS/hybrid/predictions_-10A.npy') 
+        theory_data = np.load('trained_models/TGDS/hybrid/predictions_-10A.npy')
 
     theory_preprocessed, scaler_res = preprocess_raw_data(params, theory_data)
     
