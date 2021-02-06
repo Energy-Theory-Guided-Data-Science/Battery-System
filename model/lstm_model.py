@@ -60,7 +60,7 @@ def approximation_loss(y_true, y_pred):
     loss = backend.sum(backend.relu(y_lower - y_pred) + backend.relu(y_pred - y_upper))
     
     # to visualize loss during training
-    if (loss.numpy() != 0,0):
+    if (loss.numpy() != 0.0):
         print(' - apx:', loss.numpy())
     return loss
 
