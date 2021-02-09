@@ -8,6 +8,8 @@ from deprecated import deprecated
 
 def subsequences(sequence_X, sequence_y, n_steps):
     """Creates subsequences of the original sequences to fit the keras model structure.
+    
+    It is recommended to align the sequences first with util.align().
  
     Args:
         sequence_1 (numpy.ndarray): 
@@ -130,7 +132,7 @@ def preprocess_raw_data(params, sequence):
     sequence = smooth(sequence, params['gauss_sigma'])
     sequence = np.reshape(sequence, (-1, 1))
     
-    scaler = MinMaxScaler(feature_range = (-1, 1))
+    scaler = MinMaxScaler(feature_range = (params['feature_range_low'], params['feature_range_high']))
     scaler.fit(sequence)
     sequence = scaler.transform(sequence)
     
@@ -204,7 +206,7 @@ def prepare_data(params, profiles, slave, cell):
     current_cum = np.cumsum(current_raw)
 
     # preprocess data
-    current_preprocessed, scaler_cur = preprocess_raw_data(params, current_raw)
+    current_preprocessed, scaler_cur = preprocess_raw_data(params, current_raw)    
     current_cum_preprocessed, scaler_cur_cum = preprocess_raw_data(params, current_cum)
     voltage_preprocessed, scaler_volt = preprocess_raw_data(params, voltage_raw)
 
@@ -228,6 +230,31 @@ def prepare_data(params, profiles, slave, cell):
     
     return X, y, scalers
 
+def prepare_data_single_input(params, profiles, slave, cell):
+    current_raw, voltage_raw = [], []
+    for profile in profiles:
+        current_raw = np.append(current_raw, load_current_raw_data(profile), axis=0)
+        voltage_raw = np.append(voltage_raw, load_voltage_raw_data(profile, slave, cell), axis=0)
+    
+    # preprocess data
+    current_preprocessed, scaler_cur = preprocess_raw_data(params, current_raw)    
+    voltage_preprocessed, scaler_volt = preprocess_raw_data(params, voltage_raw)
+
+    # align current sequence to voltage if sample frequency differs
+    if voltage_preprocessed.shape[0] != current_preprocessed.shape[0]:
+        current_preprocessed = align(current_preprocessed, voltage_preprocessed)
+
+    # create input features
+    X, y = subsequences(current_preprocessed, voltage_preprocessed, params['n_steps'])
+    y = np.reshape(y, (-1, 1))
+    X = X.reshape(X.shape[0], X.shape[1], 1)
+    
+    print('Input:', X.shape, '\nOutput/Label:', y.shape)
+    
+    scalers = scaler_cur, scaler_volt
+    
+    return X, y, scalers
+
 def prepare_hybrid_data(params, profiles, slave, cell):
     current_raw, voltage_raw = [], []
     for profile in profiles:
@@ -239,7 +266,7 @@ def prepare_hybrid_data(params, profiles, slave, cell):
     current_cum_preprocessed, scaler_cur_cum = preprocess_raw_data(params, current_cum)
     voltage_preprocessed, scaler_volt = preprocess_raw_data(params, voltage_raw)
 
-    if voltage_preprocessed.shape[0] != current_preprocessed.shape[0]:
+    if (voltage_preprocessed.shape[0] != current_preprocessed.shape[0]):
         current_preprocessed = align(current_preprocessed, voltage_preprocessed)
         current_cum_preprocessed = align(current_cum_preprocessed, voltage_preprocessed)
 
@@ -250,7 +277,14 @@ def prepare_hybrid_data(params, profiles, slave, cell):
     X2 = X2.reshape(X2.shape[0], X2.shape[1], 1)
     
     # add voltage computed by theory-based model
-    theory_data = np.load('trained_models/TGDS/9079/predictions.npy') # TODO: change this to the appropriate EC-Model path
+    theory_data = []
+    if (profiles[0] == 'Profile 10A'):
+        theory_data = np.load('trained_models/TGDS/hybrid/predictions_10A.npy') 
+    elif (profiles[0] == 'Profile 10A 3x'):
+        theory_data = np.load('trained_models/TGDS/hybrid/predictions_10A_3x.npy') 
+    elif (profiles[0] == 'Profile -10A'):
+        theory_data = np.load('trained_models/TGDS/hybrid/predictions_-10A.npy')
+
     theory_preprocessed, scaler_res = preprocess_raw_data(params, theory_data)
     
     X3, _ = subsequences(theory_preprocessed, voltage_preprocessed, params['n_steps'])
