@@ -7,27 +7,27 @@ Project Organization
 
     ├── LICENSE
     ├── Makefile          
-    ├── README.md               <- The top-level README for developers using this project.
+    ├── README.md               <- The top-level README for developers using this project
     ├── data
-    │   ├── external            <- Data from third party sources.
-    │   ├── interim             <- Intermediate data that has been transformed.
-    │   ├── processed           <- The final, canonical data sets for modeling.
-    │   └── raw                 <- The original, immutable data dump.
+    │   ├── external            <- Data from third party sources
+    │   ├── interim             <- Intermediate data that has been transformed
+    │   ├── processed           <- The final, canonical data sets for modeling
+    │   └── raw                 <- The original, immutable data dump
     │
     ├── docs               
     │
     ├── models                  <- Trained and serialized models, model predictions, or model summaries
     │
-    ├── notebooks               <- Jupyter notebooks.
-    │   ├── data                <- To visualize the FOBSS dataset.
-    │   ├── features            <- Different analysis on the FOBSS dataset.
-    │   └── models              <- Several Notebooks which execute the source code for training the models.
-    │       ├── data_baseline   <- Data Science based models.
-    │       ├── theory_baseline <- Theory based models.
-    │       ├── theory_guided   <- Models combining theory with data science.
-    │       └── other           <- Old approaches, only kept for documentation purposes.
+    ├── notebooks               <- Jupyter notebooks
+    │   ├── data                <- To visualize the FOBSS dataset
+    │   ├── features            <- Different analysis on the FOBSS dataset
+    │   └── models              <- Several Notebooks which execute the source code for training the models
+    │       ├── data_baseline   <- Data Science based models
+    │       ├── theory_baseline <- Theory based models
+    │       ├── theory_guided   <- Models combining theory with data science
+    │       └── other           <- Old approaches, only kept for documentation purposes
     │
-    ├── references              <- Data dictionaries, manuals, and all other explanatory materials.
+    ├── references              <- Data dictionaries, manuals, and all other explanatory materials
     │
     ├── reports                 <- Generated analysis as HTML, PDF, LaTeX, etc.
     │   └── figures             <- Generated graphics and figures to be used in reporting
@@ -35,7 +35,7 @@ Project Organization
     ├── environment.yml         <- The requirements file for reproducing the analysis environment
     │
     ├── setup.py           
-    ├── src                     <-  Source code for use in this project.
+    ├── src                     <- Source code for use in this project
     │   ├── __init__.py         <- Makes src a Python module
     │   │
     │   ├── data                <- Scripts to download or generate data
