@@ -274,11 +274,11 @@ def prepare_hybrid_data(params, profiles, slave, cell):
     # add voltage computed by theory-based model
     theory_data = []
     if (profiles[0] == 'Profile 10A'):
-        theory_data = np.load('../../../models/TGDS/hybrid/predictions_10A.npy') # TODO: commit these models
+        theory_data = np.load('../../../models/T/theory_baseline-Profile 10A-2652-predicted_profile.npy')
     elif (profiles[0] == 'Profile 10A 3x'):
-        theory_data = np.load('../../../models/TGDS/hybrid/predictions_10A_3x.npy') 
+        theory_data = np.load('../../../models/T/theory_baseline-Profile -10A-2233-predicted_profile.npy') 
     elif (profiles[0] == 'Profile -10A'):
-        theory_data = np.load('../../../models/TGDS/hybrid/predictions_-10A.npy')
+        theory_data = np.load('../../../models/T/theory_baseline-Profile 10A 3x-4951-predicted_profile.npy')
 
     theory_preprocessed, scaler_res = preprocess_raw_data(params, theory_data)
     
