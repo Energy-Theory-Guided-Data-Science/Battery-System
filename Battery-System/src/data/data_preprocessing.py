@@ -276,9 +276,9 @@ def prepare_hybrid_data(params, profiles, slave, cell):
     if (profiles[0] == 'Profile 10A'):
         theory_data = np.load('../../../models/T/theory_baseline-Profile 10A-2652-predicted_profile.npy')
     elif (profiles[0] == 'Profile 10A 3x'):
-        theory_data = np.load('../../../models/T/theory_baseline-Profile -10A-2233-predicted_profile.npy') 
-    elif (profiles[0] == 'Profile -10A'):
         theory_data = np.load('../../../models/T/theory_baseline-Profile 10A 3x-4951-predicted_profile.npy')
+    elif (profiles[0] == 'Profile -10A'):
+        theory_data = np.load('../../../models/T/theory_baseline-Profile -10A-2233-predicted_profile.npy')
 
     theory_preprocessed, scaler_res = preprocess_raw_data(params, theory_data)
     
