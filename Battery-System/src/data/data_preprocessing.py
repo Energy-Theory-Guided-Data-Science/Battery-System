@@ -5,6 +5,7 @@ import numpy as np
 from sklearn.preprocessing import MinMaxScaler
 from scipy import ndimage 
 from deprecated import deprecated
+import matplotlib.pyplot as plt
 
 def subsequences(sequence_X, sequence_y, n_steps):
     """Creates subsequences of the original sequences to fit the keras model structure.
@@ -116,7 +117,6 @@ def align(sequence_1, sequence_2):
 
 def preprocess_raw_data(params, sequence):
     """Preprocesses the raw sequence by subsamling, smoothing and scaling the data.
-
     Args:
         params (dict): 
             Dictionary containing the keys 's_sample' and 'gauss_sigma' which represent the input parameter for preprocessing
@@ -134,6 +134,54 @@ def preprocess_raw_data(params, sequence):
     
     scaler = MinMaxScaler(feature_range = (params['feature_range_low'], params['feature_range_high']))
     scaler.fit(sequence)
+    sequence = scaler.transform(sequence)
+    
+    return sequence, scaler
+
+
+def preprocess_raw_acc_cur(params, sequence):
+    sequence = subsample(sequence, params['d_sample'])
+    sequence = smooth(sequence, params['gauss_sigma'])
+    sequence = np.reshape(sequence, (-1, 1))
+    
+    scaler = MinMaxScaler(feature_range=(params['feature_range_acc_cur_low'], params['feature_range_acc_cur_high']))
+    
+    boundaries = [params['boundary_acc_cur_low'], params['boundary_acc_cur_high']]
+    boundaries = np.reshape(boundaries, (-1, 1))
+    scaler.fit(boundaries)
+    
+    sequence = scaler.transform(sequence)
+
+    return sequence, scaler
+
+
+def preprocess_raw_cur(params, sequence):
+    sequence = subsample(sequence, params['d_sample'])
+    sequence = smooth(sequence, params['gauss_sigma'])
+    sequence = np.reshape(sequence, (-1, 1))
+    
+    scaler = MinMaxScaler(feature_range=(params['feature_range_cur_low'], params['feature_range_cur_high']))
+    
+    boundaries = [params['boundary_cur_low'], params['boundary_cur_high']]
+    boundaries = np.reshape(boundaries, (-1, 1))
+    scaler.fit(boundaries)
+    
+    sequence = scaler.transform(sequence)
+    
+    return sequence, scaler
+
+
+def preprocess_raw_voltage(params, sequence):
+    sequence = subsample(sequence, params['d_sample'])
+    sequence = smooth(sequence, params['gauss_sigma'])
+    sequence = np.reshape(sequence, (-1, 1))
+    
+    scaler = MinMaxScaler(feature_range=(params['feature_range_volt_low'], params['feature_range_volt_high']))
+    
+    boundaries = [params['boundary_voltage_low'], params['boundary_voltage_high']]
+    boundaries = np.reshape(boundaries, (-1, 1))
+    scaler.fit(boundaries)
+    
     sequence = scaler.transform(sequence)
     
     return sequence, scaler
@@ -197,18 +245,18 @@ def prepare_data(params, profiles, slave, cell):
     Returns:
         A tuple containing 3 values. The prepared input X, the prepared output/label y and the used scalers.
     """
-    
     current_raw, voltage_raw = [], []
     for profile in profiles:
         current_raw = np.append(current_raw, load_current_raw_data(profile), axis=0)
         voltage_raw = np.append(voltage_raw, load_voltage_raw_data(profile, slave, cell), axis=0)
     
     current_cum = np.cumsum(current_raw)
+    current_cum = current_cum / np.max(np.abs(current_cum))
 
     # preprocess data
-    current_preprocessed, scaler_cur = preprocess_raw_data(params, current_raw)    
-    current_cum_preprocessed, scaler_cur_cum = preprocess_raw_data(params, current_cum)
-    voltage_preprocessed, scaler_volt = preprocess_raw_data(params, voltage_raw)
+    current_preprocessed, scaler_cur = preprocess_raw_cur(params, current_raw)    
+    current_cum_preprocessed, scaler_cur_cum = preprocess_raw_acc_cur(params, current_cum)
+    voltage_preprocessed, scaler_volt = preprocess_raw_voltage(params, voltage_raw)
 
     # align current sequence to voltage if sample frequency differs
     if voltage_preprocessed.shape[0] != current_preprocessed.shape[0]:
@@ -226,9 +274,10 @@ def prepare_data(params, profiles, slave, cell):
     X = np.append(X1, X2, axis=2)
     print('Input:', X.shape, '\nOutput/Label:', y.shape)
     
-    scalers = scaler_cur, scaler_volt
+    scalers = scaler_cur, scaler_cur_cum, scaler_volt
     
     return X, y, scalers
+
 
 def prepare_data_single_input(params, profiles, slave, cell):
     current_raw, voltage_raw = [], []
@@ -254,6 +303,7 @@ def prepare_data_single_input(params, profiles, slave, cell):
     scalers = scaler_cur, scaler_volt
     
     return X, y, scalers
+
 
 def prepare_hybrid_data(params, profiles, slave, cell):
     current_raw, voltage_raw = [], []
