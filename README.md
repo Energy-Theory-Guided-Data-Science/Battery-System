@@ -14,7 +14,7 @@ After extracting the zip, you should be provided with a folder named `fobss_data
 Now you are all set! Navigate to `Battery-System/notebooks/data/fobss_overview.ipynb` to get an overview of the data
 
 ### 2. Install Environment
-In order to be able to run the provided jupyter notebooks there are several dependencies needed to be installed. Using an anaconda shell please enter:
+In order to be able to run the provided jupyter notebooks there are several dependencies needed to be installed. Using an anaconda shell in the `Battery-System` folder, please enter :
 
 `conda env create -f environment.yml`
 
