@@ -7,6 +7,45 @@ from scipy import ndimage
 from deprecated import deprecated
 import matplotlib.pyplot as plt
 
+# ---------------------------------------------- Load Data -------------------------------------------------------
+def load_current_raw_data(profile):
+    """Loads the current raw data.
+
+    This method will extract raw data provided by the inverter current sensor.
+
+    Args:
+        profile (str):
+            The FOBSS profile from which the data should be loaded
+        
+    Returns:
+        A numpy array containing the requested raw data.
+    """
+    current_data = np.loadtxt('../../../data/raw/fobss_data/data/' + profile + '/inverter/Inverter_Current.csv', delimiter=';')
+    current_data = current_data[:,1] # only the first column includes necessary information
+    return current_data
+
+
+def load_voltage_raw_data(profile, slave, cell):
+    """ Loads the voltage raw data.
+
+    This method will extract raw data provided by the specified cell voltage sensor.
+
+    Args:
+        profile (str): 
+            The FOBSS profile from which the data should be loaded
+        slave (int): 
+            The battery slave (or stack)
+        cell (int): 
+            The battery cell 
+        
+    Returns:
+        A numpy array containing the requested raw data.
+    """
+    voltage_data = np.loadtxt('../../../data/raw/fobss_data/data/' + profile + '/cells/Slave_' + str(slave) + '_Cell_Voltages.csv', delimiter=';')
+    voltage_data = voltage_data[:,cell] # select correct cell out of slave data
+    return voltage_data
+
+# ----------------------------------------- Data Preprocessing --------------------------------------------------
 def subsequences(sequence_X, sequence_y, n_steps):
     """Creates subsequences of the original sequences to fit the keras model structure.
     
@@ -31,7 +70,6 @@ def subsequences(sequence_X, sequence_y, n_steps):
     Raises:
         Exception: If n_steps exceeds the length of sequence_X no subsequences can be created
     """
-    
     if n_steps > len(sequence_X):
         raise Exception('data_preprocessing.subsequences: n_steps should not exceed the sequence length')
     
@@ -100,7 +138,6 @@ def align(sequence_1, sequence_2):
     Raises:
         Exception: If the array which is being aligned is of smaller size than the one which it is supposed to be aligned to.
     """
-    
     if len(sequence_1) < len(sequence_2):
         raise Exception('data_preprocessing.align: missmatch of sequence lengths')
     
@@ -111,7 +148,6 @@ def align(sequence_1, sequence_2):
         aligned_sequence.append(sequence_1[int(np.round(i * sample_ratio))])
 
     aligned_sequence = np.array(aligned_sequence)
-    
     return aligned_sequence
 
 
@@ -127,7 +163,6 @@ def preprocess_raw_data(params, sequence):
     Returns:
         A tuple of 2 values. The preprocessed sequence and the scaler object (used for retransforming after training)
     """
-    
     sequence = subsample(sequence, params['d_sample'])
     sequence = smooth(sequence, params['gauss_sigma'])
     sequence = np.reshape(sequence, (-1, 1))
@@ -135,7 +170,21 @@ def preprocess_raw_data(params, sequence):
     scaler = MinMaxScaler(feature_range = (params['feature_range_low'], params['feature_range_high']))
     scaler.fit(sequence)
     sequence = scaler.transform(sequence)
+    return sequence, scaler
+
+
+def preprocess_raw_current(params, sequence):
+    sequence = subsample(sequence, params['d_sample'])
+    sequence = smooth(sequence, params['gauss_sigma'])
+    sequence = np.reshape(sequence, (-1, 1))
     
+    scaler = MinMaxScaler(feature_range=(params['feature_range_cur_low'], params['feature_range_cur_high']))
+    
+    boundaries = [params['boundary_cur_low'], params['boundary_cur_high']]
+    boundaries = np.reshape(boundaries, (-1, 1))
+    scaler.fit(boundaries)
+    
+    sequence = scaler.transform(sequence)
     return sequence, scaler
 
 
@@ -151,23 +200,20 @@ def preprocess_raw_acc_cur(params, sequence):
     scaler.fit(boundaries)
     
     sequence = scaler.transform(sequence)
-
     return sequence, scaler
 
 
-def preprocess_raw_cur(params, sequence):
-    sequence = subsample(sequence, params['d_sample'])
-    sequence = smooth(sequence, params['gauss_sigma'])
+def preprocess_raw_charge(params, sequence):
     sequence = np.reshape(sequence, (-1, 1))
+    sequence = subsample(sequence, params['d_sample'])
+
+    scaler = MinMaxScaler(feature_range=(params['feature_range_charge_low'], params['feature_range_charge_high']))
     
-    scaler = MinMaxScaler(feature_range=(params['feature_range_cur_low'], params['feature_range_cur_high']))
-    
-    boundaries = [params['boundary_cur_low'], params['boundary_cur_high']]
+    boundaries = [params['boundary_charge_low'], params['boundary_charge_high']]
     boundaries = np.reshape(boundaries, (-1, 1))
     scaler.fit(boundaries)
     
     sequence = scaler.transform(sequence)
-    
     return sequence, scaler
 
 
@@ -187,45 +233,7 @@ def preprocess_raw_voltage(params, sequence):
     return sequence, scaler
 
 
-def load_current_raw_data(profile):
-    """Loads the current raw data.
-
-    This method will extract raw data provided by the inverter current sensor.
-
-    Args:
-        profile (str):
-            The FOBSS profile from which the data should be loaded
-        
-    Returns:
-        A numpy array containing the requested raw data.
-    """
-    
-    current_data = np.loadtxt('../../../data/raw/fobss_data/data/' + profile + '/inverter/Inverter_Current.csv', delimiter=';')
-    current_data = current_data[:,1] # only the first column includes necessary information
-    return current_data
-
-
-def load_voltage_raw_data(profile, slave, cell):
-    """ Loads the voltage raw data.
-
-    This method will extract raw data provided by the specified cell voltage sensor.
-
-    Args:
-        profile (str): 
-            The FOBSS profile from which the data should be loaded
-        slave (int): 
-            The battery slave (or stack)
-        cell (int): 
-            The battery cell 
-        
-    Returns:
-        A numpy array containing the requested raw data.
-    """
-    voltage_data = np.loadtxt('../../../data/raw/fobss_data/data/' + profile + '/cells/Slave_' + str(slave) + '_Cell_Voltages.csv', delimiter=';')
-    voltage_data = voltage_data[:,cell] # select correct cell out of slave data
-    return voltage_data
-
-
+# ---------------------------------------- Prepare Network Input -------------------------------------------------
 def prepare_data(params, profiles, slave, cell):
     """Prepares the requested data to be suitable for the network.
 
@@ -245,41 +253,50 @@ def prepare_data(params, profiles, slave, cell):
     Returns:
         A tuple containing 3 values. The prepared input X, the prepared output/label y and the used scalers.
     """
-    current_raw, voltage_raw = [], []
+    i = 0
+    
     for profile in profiles:
-        current_raw = np.append(current_raw, load_current_raw_data(profile), axis=0)
-        voltage_raw = np.append(voltage_raw, load_voltage_raw_data(profile, slave, cell), axis=0)
-    
-    current_cum = np.cumsum(current_raw)
-    current_cum = current_cum / np.max(np.abs(current_cum))
+        # load data
+        current_raw = load_current_raw_data(profile)
+        current_cum = np.cumsum(current_raw)
+        current_cum = current_cum / np.max(np.abs(current_cum))
+        voltage_raw = load_voltage_raw_data(profile, slave, cell)
 
-    # preprocess data
-    current_preprocessed, scaler_cur = preprocess_raw_cur(params, current_raw)    
-    current_cum_preprocessed, scaler_cur_cum = preprocess_raw_acc_cur(params, current_cum)
-    voltage_preprocessed, scaler_volt = preprocess_raw_voltage(params, voltage_raw)
+        # preprocess data
+        current_preprocessed, scaler_cur = preprocess_raw_current(params, current_raw)    
+        current_cum_preprocessed, scaler_cur_cum = preprocess_raw_acc_cur(params, current_cum)
+        voltage_preprocessed, scaler_volt = preprocess_raw_voltage(params, voltage_raw)
 
-    # align current sequence to voltage if sample frequency differs
-    if voltage_preprocessed.shape[0] != current_preprocessed.shape[0]:
-        current_preprocessed = align(current_preprocessed, voltage_preprocessed)
-        current_cum_preprocessed = align(current_cum_preprocessed, voltage_preprocessed)
+        # align current sequence to voltage if sample frequency differs
+        if voltage_preprocessed.shape[0] != current_preprocessed.shape[0]:
+            current_preprocessed = align(current_preprocessed, voltage_preprocessed)
+            current_cum_preprocessed = align(current_cum_preprocessed, voltage_preprocessed)
 
-    # create input features
-    X1, y = subsequences(current_preprocessed, voltage_preprocessed, params['n_steps'])
-    y = np.reshape(y, (-1, 1))
-    X1 = X1.reshape(X1.shape[0], X1.shape[1], 1)
-    
-    X2, _ = subsequences(current_cum_preprocessed, voltage_preprocessed, params['n_steps'])
-    X2 = X2.reshape(X2.shape[0], X2.shape[1], 1)
+        # create input features
+        profile_X1, profile_y = subsequences(current_preprocessed, voltage_preprocessed, params['n_steps'])
+        profile_y = np.reshape(profile_y, (-1, 1))
+        profile_X1 = profile_X1.reshape(profile_X1.shape[0], profile_X1.shape[1], 1)
 
-    X = np.append(X1, X2, axis=2)
-    print('Input:', X.shape, '\nOutput/Label:', y.shape)
+        profile_X2, _ = subsequences(current_cum_preprocessed, voltage_preprocessed, params['n_steps'])
+        profile_X2 = profile_X2.reshape(profile_X2.shape[0], profile_X2.shape[1], 1)
+
+        profile_X = np.append(profile_X1, profile_X2, axis=2)
+
+        # append for multiple profiles
+        if (i == 0):
+            X = profile_X
+            y = profile_y
+            scalers = scaler_cur, scaler_cur_cum, scaler_volt
+        else:
+            X = np.append(X, profile_X, axis=0)
+            y = np.append(y, profile_y, axis=0)
+        i += 1
     
-    scalers = scaler_cur, scaler_cur_cum, scaler_volt
-    
+    print('Input:', X.shape, ', Output/Label:', y.shape)
     return X, y, scalers
 
 
-def prepare_data_single_input(params, profiles, slave, cell):
+def prepare_current_input(params, profiles, slave, cell):
     current_raw, voltage_raw = [], []
     for profile in profiles:
         current_raw = np.append(current_raw, load_current_raw_data(profile), axis=0)
@@ -305,7 +322,60 @@ def prepare_data_single_input(params, profiles, slave, cell):
     return X, y, scalers
 
 
-def prepare_hybrid_data(params, profiles, slave, cell):
+def prepare_current_charge_input(params, profiles, slave, cell):
+    i = 0
+    
+    for profile in profiles:
+        # load data
+        current_raw = load_current_raw_data(profile) - current_raw[0]
+        
+        charge_raw = []
+        q_t = 0
+        for j in range(len(current_raw)):
+            q_t += current_raw[j] * params['d_t']  / 3600
+            charge_raw.append(q_t)
+        
+        voltage_raw = load_voltage_raw_data(profile, slave, cell)
+
+        # preprocess data
+        current_preprocessed, scaler_cur = preprocess_raw_current(params, current_raw)    
+        charge_preprocessed, scaler_charge = preprocess_raw_charge(params, charge_raw)
+        voltage_preprocessed, scaler_volt = preprocess_raw_voltage(params, voltage_raw)
+        
+#         if (i == 0):
+            plt.plot(current_preprocessed)
+#             plt.plot(charge_preprocessed)
+
+        # align current sequence to voltage if sample frequency differs
+        if voltage_preprocessed.shape[0] != current_preprocessed.shape[0]:
+            current_preprocessed = align(current_preprocessed, voltage_preprocessed)
+            charge_preprocessed = align(charge_preprocessed, voltage_preprocessed)
+
+        # create input features
+        profile_X1, profile_y = subsequences(current_preprocessed, voltage_preprocessed, params['n_steps'])
+        profile_y = np.reshape(profile_y, (-1, 1))
+        profile_X1 = profile_X1.reshape(profile_X1.shape[0], profile_X1.shape[1], 1)
+
+        profile_X2, _ = subsequences(charge_preprocessed, voltage_preprocessed, params['n_steps'])
+        profile_X2 = profile_X2.reshape(profile_X2.shape[0], profile_X2.shape[1], 1)
+
+        profile_X = np.append(profile_X1, profile_X2, axis=2)
+
+        # append for multiple profiles
+        if (i == 0):
+            X = profile_X
+            y = profile_y
+            scalers = scaler_cur, scaler_charge, scaler_volt
+        else:
+            X = np.append(X, profile_X, axis=0)
+            y = np.append(y, profile_y, axis=0)
+        i += 1
+    
+    print('Input:', X.shape, ', Output/Label:', y.shape)
+    return X, y, scalers
+
+
+def prepare_hybrid_input(params, profiles, slave, cell):
     current_raw, voltage_raw = [], []
     for profile in profiles:
         current_raw = np.append(current_raw, load_current_raw_data(profile), axis=0)
@@ -372,7 +442,6 @@ def prepare(input_sequence, label_sequence, aligned, d_sample, n_steps, sigma):
         A tuple of 3 values. The prepared input sequence X, the output sequence of labels y and the scaler component for y. 
         This is needed afterwards to scale the output back to the original value range.
     """
-    
     # align data if not of equal size
     if not aligned:        
         input_sequence = align(input_sequence, label_sequence)

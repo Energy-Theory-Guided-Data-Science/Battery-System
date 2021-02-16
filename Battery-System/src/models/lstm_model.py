@@ -18,7 +18,7 @@ from tensorflow.keras import callbacks
 from tabulate import tabulate
 from ..data.data_preprocessing import preprocess_raw_data
 
-# ---------------------------------------------------- Callbacks ----------------------------------------------------
+# ---------------------------------------------------- Callbacks -------------------------------------------------
 class TimeHistory(callbacks.Callback):
     def on_train_begin(self, logs={}):
         self.times = []
@@ -36,7 +36,7 @@ class TimeHistory(callbacks.Callback):
     def on_predict_end(self, logs={}):
         self.times.append(time.time() - self.epoch_time_start)
 
-# ---------------------------------------------------- Custom Loss Functions ----------------------------------------------------
+# --------------------------------------------- Custom Loss Functions --------------------------------------------
 
 def approximation_loss(y_true, y_pred):
     """Computes the approximation loss as described in [1].
@@ -127,7 +127,7 @@ def combine_losses(params):
         return accumulated_loss
     return loss
 
-# ---------------------------------------------------- LSTM Model  ----------------------------------------------------
+# --------------------------------------------- LSTM Model  ------------------------------------------------------
 
 class Model: 
     """Responsible for managing the neural network architecture which is used to predict voltage time series data.
