@@ -450,40 +450,61 @@ def prepare_current_charge_delta_input(params, profiles, slave, cell):
     return X, y, scalers
 
 def prepare_hybrid_input(params, profiles, slave, cell):
-    current_raw, voltage_raw = [], []
+    i = 0
+    
     for profile in profiles:
-        current_raw = np.append(current_raw, load_current_raw_data(profile), axis=0)
-        voltage_raw = np.append(voltage_raw, load_voltage_raw_data(profile, slave, cell), axis=0)
-    
-    current_preprocessed, scaler_cur = preprocess_raw_data(params, current_raw)
-    voltage_preprocessed, scaler_volt = preprocess_raw_data(params, voltage_raw)
+        # load data
+        current_raw = load_current_raw_data(profile)
+        
+        charge_raw = []
+        q_t = 0
+        for j in range(len(current_raw)):
+            q_t += current_raw[j] * params['d_t']  / 3600
+            charge_raw.append(q_t)
+        
+        voltage_raw = load_voltage_raw_data(profile, slave, cell)
+        
+        if (profile == 'Profile 10A'):
+            theory_raw = np.load('../../../models/T/theory_baseline-Profile 10A-2652-predicted_profile.npy')
+        
+        
+        # preprocess data
+        current_preprocessed, scaler_cur = preprocess_raw_current(params, current_raw)    
+        charge_preprocessed, scaler_charge = preprocess_raw_charge(params, charge_raw)
+        voltage_preprocessed, scaler_volt = preprocess_raw_voltage(params, voltage_raw)
+        theory_preprocessed, scaler_theory = preprocess_raw_voltage(params, voltage_raw)
+        
+        # align current sequence to voltage if sample frequency differs
+        if voltage_preprocessed.shape[0] != current_preprocessed.shape[0]:
+            current_preprocessed = align(current_preprocessed, voltage_preprocessed)
+            charge_preprocessed = align(charge_preprocessed, voltage_preprocessed)
+            theory_preprocessed = align(theory_preprocessed, voltage_preprocessed)
 
-    if (voltage_preprocessed.shape[0] != current_preprocessed.shape[0]):
-        current_preprocessed = align(current_preprocessed, voltage_preprocessed)
+        # create input features
+        profile_X1, profile_y = subsequences(current_preprocessed, voltage_preprocessed, params['n_steps'])
+        profile_y = np.reshape(profile_y, (-1, 1))
+        profile_X1 = profile_X1.reshape(profile_X1.shape[0], profile_X1.shape[1], 1)
 
-    X1, y = subsequences(current_preprocessed, voltage_preprocessed, params['n_steps'])
-    y = np.reshape(y, (-1, 1))
-    X1 = X1.reshape(X1.shape[0], X1.shape[1], 1)
-    
-    # add voltage computed by theory-based model
-    theory_data = []
-    if (profiles[0] == 'Profile 10A'):
-        theory_data = np.load('../../../models/T/theory_baseline-Profile 10A-2652-predicted_profile.npy')
-    elif (profiles[0] == 'Profile 10A 3x'):
-        theory_data = np.load('../../../models/T/theory_baseline-Profile 10A 3x-4951-predicted_profile.npy')
-    elif (profiles[0] == 'Profile -10A'):
-        theory_data = np.load('../../../models/T/theory_baseline-Profile -10A-2233-predicted_profile.npy')
+        profile_X2, _ = subsequences(charge_preprocessed, voltage_preprocessed, params['n_steps'])
+        profile_X2 = profile_X2.reshape(profile_X2.shape[0], profile_X2.shape[1], 1)
+        
+        profile_X3, _ = subsequences(theory_preprocessed, voltage_preprocessed, params['n_steps'])
+        profile_X3 = profile_X3.reshape(profile_X3.shape[0], profile_X3.shape[1], 1)
+        
+        profile_X = np.append(profile_X1, profile_X2, axis=2)
+        profile_X = np.append(profile_X, profile_X3, axis=2)
 
-    theory_preprocessed, scaler_res = preprocess_raw_data(params, theory_data)
+        # append for multiple profiles
+        if (i == 0):
+            X = profile_X
+            y = profile_y
+            scalers = scaler_cur, scaler_charge, scaler_volt
+        else:
+            X = np.append(X, profile_X, axis=0)
+            y = np.append(y, profile_y, axis=0)
+        i += 1
     
-    X2, _ = subsequences(theory_preprocessed, voltage_preprocessed, params['n_steps'])
-    X2 = X2.reshape(X2.shape[0], X2.shape[1], 1)
-    
-    X = np.append(X1, X2, axis=2)
-    print('Input:', X.shape, '\nOutput/Label:', y.shape)
-    
-    scalers = scaler_cur, scaler_volt
-    
+    print('Input:', X.shape, ', Output/Label:', y.shape)    
     return X, y, scalers
 
 
