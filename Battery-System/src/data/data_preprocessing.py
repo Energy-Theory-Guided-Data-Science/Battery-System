@@ -465,14 +465,18 @@ def prepare_hybrid_input(params, profiles, slave, cell):
         voltage_raw = load_voltage_raw_data(profile, slave, cell)
         
         if (profile == 'Profile 10A'):
-            theory_raw = np.load('../../../models/T/theory_baseline-Profile 10A-2652-predicted_profile.npy')
-        
+#             theory_raw = np.load('../../../models/T/theory_baseline-Profile 10A-2652-predicted_profile.npy')
+            theory_raw = np.load('../../../models/T/theory_baseline-Profile 10A-827-predicted_profile.npy')
+
         
         # preprocess data
         current_preprocessed, scaler_cur = preprocess_raw_current(params, current_raw)    
         charge_preprocessed, scaler_charge = preprocess_raw_charge(params, charge_raw)
         voltage_preprocessed, scaler_volt = preprocess_raw_voltage(params, voltage_raw)
         theory_preprocessed, scaler_theory = preprocess_raw_voltage(params, voltage_raw)
+        
+        if (i == 0):
+            plt.plot(theory_preprocessed)
         
         # align current sequence to voltage if sample frequency differs
         if voltage_preprocessed.shape[0] != current_preprocessed.shape[0]:
