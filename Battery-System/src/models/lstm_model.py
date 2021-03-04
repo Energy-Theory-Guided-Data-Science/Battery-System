@@ -222,7 +222,7 @@ class Model:
         return time_callback, fig
 
 
-    def test(self, X_train, y_train, X_validation, y_validation, X_test, y_test, scalers):
+    def test(self, X_train, y_train, X_validation, y_validation, X_test, y_test, scalers_train):
         """Tests the LSTM model on validation and test data.
     
         For visualization purposes, a table with several metrics for training, validation and test data 
@@ -257,20 +257,20 @@ class Model:
         # --------- predict on data ---------
         time_train = TimeHistory()
         yhat_train = self.model.predict(X_train, callbacks=[time_train], verbose=1)
-        yhat_train_unscaled = scalers[2].inverse_transform(yhat_train)
-        y_train_unscaled = scalers[2].inverse_transform(y_train)
+        yhat_train_unscaled = scalers_train.inverse_transform(yhat_train)
+        y_train_unscaled = scalers_train.inverse_transform(y_train)
         print('Prediction time on Training Set: ', str(round(np.sum(time_train.times), 3)) + 's')
         
         time_val = TimeHistory()
         yhat_validation = self.model.predict(X_validation, callbacks=[time_val], verbose=1)
-        yhat_validation_unscaled = scalers[2].inverse_transform(yhat_validation)
-        y_validation_unscaled = scalers[2].inverse_transform(y_validation)
+        yhat_validation_unscaled = scalers_train.inverse_transform(yhat_validation)
+        y_validation_unscaled = scalers_train.inverse_transform(y_validation)
         print('Prediction time on Validation Set: ', str(round(np.sum(time_val.times), 3)) + 's')
         
         time_test = TimeHistory()
         yhat_test = self.model.predict(X_test, callbacks=[time_test], verbose = 1)
-        yhat_test_unscaled = scalers[2].inverse_transform(yhat_test)
-        y_test_unscaled = scalers[2].inverse_transform(y_test)
+        yhat_test_unscaled = scalers_train.inverse_transform(yhat_test)
+        y_test_unscaled = scalers_train.inverse_transform(y_test)
         print('Prediction time on Test Set: ', str(round(np.sum(time_test.times), 3)) + 's')
 
         # --------- compute error ---------
@@ -329,30 +329,30 @@ class Model:
         return yhat_train_unscaled, yhat_validation_unscaled, yhat_test_unscaled, delta_test, time, fig
 
 
-    def test_usecases(self, X_train, y_train, X_test_1, y_test_1, X_test_2, y_test_2, X_test_3, y_test_3, scalers):
+    def test_usecases(self, X_train, y_train, X_test_1, y_test_1, X_test_2, y_test_2, X_test_3, y_test_3, scalers_train):
         # --------- predict on data ---------
         time_train = TimeHistory()
         yhat_train = self.model.predict(X_train, callbacks=[time_train], verbose=1)
-        yhat_train_unscaled = scalers[2].inverse_transform(yhat_train)
-        y_train_unscaled = scalers[2].inverse_transform(y_train)
+        yhat_train_unscaled = scalers_train.inverse_transform(yhat_train)
+        y_train_unscaled = scalers_train.inverse_transform(y_train)
         print('Prediction time on Training Set: ', str(round(np.sum(time_train.times), 3)) + 's')
         
         time_test_1 = TimeHistory()
         yhat_test_1 = self.model.predict(X_test_1, callbacks=[time_test_1], verbose=1)
-        yhat_test_1_unscaled = scalers[2].inverse_transform(yhat_test_1)
-        y_test_1_unscaled = scalers[2].inverse_transform(y_test_1)
+        yhat_test_1_unscaled = scalers_train.inverse_transform(yhat_test_1)
+        y_test_1_unscaled = scalers_train.inverse_transform(y_test_1)
         print('Prediction time on Use Case 1: ', str(round(np.sum(time_test_1.times), 3)) + 's')
         
         time_test_2 = TimeHistory()
         yhat_test_2 = self.model.predict(X_test_2, callbacks=[time_test_2], verbose=1)
-        yhat_test_2_unscaled = scalers[2].inverse_transform(yhat_test_2)
-        y_test_2_unscaled = scalers[2].inverse_transform(y_test_2)
+        yhat_test_2_unscaled = scalers_train.inverse_transform(yhat_test_2)
+        y_test_2_unscaled = scalers_train.inverse_transform(y_test_2)
         print('Prediction time on Use Case 2: ', str(round(np.sum(time_test_2.times), 3)) + 's')
 
         time_test_3 = TimeHistory()
         yhat_test_3 = self.model.predict(X_test_3, callbacks=[time_test_3], verbose=1)
-        yhat_test_3_unscaled = scalers[2].inverse_transform(yhat_test_3)
-        y_test_3_unscaled = scalers[2].inverse_transform(y_test_3)
+        yhat_test_3_unscaled = scalers_train.inverse_transform(yhat_test_3)
+        y_test_3_unscaled = scalers_train.inverse_transform(y_test_3)
         print('Prediction time on Use Case 3: ', str(round(np.sum(time_test_3.times), 3)) + 's')
 
         # --------- compute error ---------
