@@ -7,6 +7,8 @@ from scipy import ndimage
 from deprecated import deprecated
 import matplotlib.pyplot as plt
 
+import src.models.thevenin_model as thevenin
+
 # ---------------------------------------------- Load Data -------------------------------------------------------
 def load_current_raw_data(profile):
     """Loads the current raw data.
@@ -277,8 +279,8 @@ def prepare_data(params, profiles, slave, cell):
         voltage_raw = load_voltage_raw_data(profile, slave, cell)
 
         # preprocess data
-        current_preprocessed, scaler_cur = preprocess_raw_current(params, current_raw)    
-        current_cum_preprocessed, scaler_cur_cum = preprocess_raw_acc_cur(params, current_cum)
+        current_preprocessed, _ = preprocess_raw_current(params, current_raw)    
+        current_cum_preprocessed, _ = preprocess_raw_acc_cur(params, current_cum)
         voltage_preprocessed, scaler_volt = preprocess_raw_voltage(params, voltage_raw)
 
         # align current sequence to voltage if sample frequency differs
@@ -300,14 +302,13 @@ def prepare_data(params, profiles, slave, cell):
         if (i == 0):
             X = profile_X
             y = profile_y
-            scalers = scaler_cur, scaler_cur_cum, scaler_volt
         else:
             X = np.append(X, profile_X, axis=0)
             y = np.append(y, profile_y, axis=0)
         i += 1
     
     print('Input:', X.shape, ', Output/Label:', y.shape)
-    return X, y, scalers
+    return X, y, scaler_volt
 
 
 def prepare_current_input(params, profiles, slave, cell):
@@ -317,7 +318,7 @@ def prepare_current_input(params, profiles, slave, cell):
         voltage_raw = np.append(voltage_raw, load_voltage_raw_data(profile, slave, cell), axis=0)
     
     # preprocess data
-    current_preprocessed, scaler_cur = preprocess_raw_data(params, current_raw)    
+    current_preprocessed, _ = preprocess_raw_data(params, current_raw)    
     voltage_preprocessed, scaler_volt = preprocess_raw_data(params, voltage_raw)
 
     # align current sequence to voltage if sample frequency differs
@@ -330,10 +331,8 @@ def prepare_current_input(params, profiles, slave, cell):
     X = X.reshape(X.shape[0], X.shape[1], 1)
     
     print('Input:', X.shape, '\nOutput/Label:', y.shape)
-    
-    scalers = scaler_cur, scaler_volt
-    
-    return X, y, scalers
+        
+    return X, y, scaler_volt
 
 
 def prepare_current_charge_input(params, profiles, slave, cell):
@@ -352,8 +351,8 @@ def prepare_current_charge_input(params, profiles, slave, cell):
         voltage_raw = load_voltage_raw_data(profile, slave, cell)
         
         # preprocess data
-        current_preprocessed, scaler_cur = preprocess_raw_current(params, current_raw)    
-        charge_preprocessed, scaler_charge = preprocess_raw_charge(params, charge_raw)
+        current_preprocessed, _ = preprocess_raw_current(params, current_raw)    
+        charge_preprocessed, _ = preprocess_raw_charge(params, charge_raw)
         voltage_preprocessed, scaler_volt = preprocess_raw_voltage(params, voltage_raw)
         
 #         if (i == 0):
@@ -386,7 +385,7 @@ def prepare_current_charge_input(params, profiles, slave, cell):
         i += 1
     
     print('Input:', X.shape, ', Output/Label:', y.shape)
-    return X, y, scalers
+    return X, y, scaler_volt
 
 
 def prepare_current_charge_delta_input(params, profiles, slave, cell):
@@ -407,8 +406,8 @@ def prepare_current_charge_delta_input(params, profiles, slave, cell):
         initial_voltage = np.repeat(voltage_raw[0], len(voltage_raw))
                 
         # preprocess data
-        current_preprocessed, scaler_cur = preprocess_raw_current(params, current_raw)    
-        charge_preprocessed, scaler_charge = preprocess_raw_charge(params, charge_raw)
+        current_preprocessed, _ = preprocess_raw_current(params, current_raw)    
+        charge_preprocessed, _ = preprocess_raw_charge(params, charge_raw)
         voltage_preprocessed, scaler_volt = preprocess_delta_voltage(params, voltage_delta)
         intial_voltage_preprocessed, _ = preprocess_raw_voltage(params, initial_voltage)
 
@@ -440,14 +439,13 @@ def prepare_current_charge_delta_input(params, profiles, slave, cell):
         if (i == 0):
             X = profile_X
             y = profile_y
-            scalers = scaler_cur, scaler_charge, scaler_volt
         else:
             X = np.append(X, profile_X, axis=0)
             y = np.append(y, profile_y, axis=0)
         i += 1
     
     print('Input:', X.shape, ', Output/Label:', y.shape)
-    return X, y, scalers
+    return X, y, scaler_volt
 
 def prepare_hybrid_input(params, profiles, slave, cell):
     i = 0
@@ -464,19 +462,21 @@ def prepare_hybrid_input(params, profiles, slave, cell):
         
         voltage_raw = load_voltage_raw_data(profile, slave, cell)
         
-        if (profile == 'Profile 10A'):
-#             theory_raw = np.load('../../../models/T/theory_baseline-Profile 10A-2652-predicted_profile.npy')
-            theory_raw = np.load('../../../models/T/theory_baseline-Profile 10A-827-predicted_profile.npy')
+        # predict on theory model
+        thevenin_params = np.load('../../../models/T/theory_baseline-' + str(params['theory_model']) + '-parameters.npy', allow_pickle=True)
+        thevenin_params = thevenin_params.item()
 
+        thevenin_hyperparams = np.load('../../../models/T/theory_baseline-' + str(params['theory_model']) + '-hyperparameters.npy', allow_pickle=True)
+        thevenin_hyperparams = thevenin_hyperparams.item()
+
+        theory_raw = thevenin.predict(profile, thevenin_params['r_0'], thevenin_params['r_1'], thevenin_params['c_1'], thevenin_hyperparams)
+        
         
         # preprocess data
-        current_preprocessed, scaler_cur = preprocess_raw_current(params, current_raw)    
-        charge_preprocessed, scaler_charge = preprocess_raw_charge(params, charge_raw)
+        current_preprocessed, _ = preprocess_raw_current(params, current_raw)    
+        charge_preprocessed, _ = preprocess_raw_charge(params, charge_raw)
         voltage_preprocessed, scaler_volt = preprocess_raw_voltage(params, voltage_raw)
-        theory_preprocessed, scaler_theory = preprocess_raw_voltage(params, voltage_raw)
-        
-        if (i == 0):
-            plt.plot(theory_preprocessed)
+        theory_preprocessed, _ = preprocess_raw_voltage(params, theory_raw)
         
         # align current sequence to voltage if sample frequency differs
         if voltage_preprocessed.shape[0] != current_preprocessed.shape[0]:
@@ -502,14 +502,16 @@ def prepare_hybrid_input(params, profiles, slave, cell):
         if (i == 0):
             X = profile_X
             y = profile_y
-            scalers = scaler_cur, scaler_charge, scaler_volt
+#             debug_list = charge_preprocessed
         else:
             X = np.append(X, profile_X, axis=0)
             y = np.append(y, profile_y, axis=0)
+#             debug_list = np.append(debug_list, charge_preprocessed, axis=0)
         i += 1
     
+#     plt.plot(debug_list)
     print('Input:', X.shape, ', Output/Label:', y.shape)    
-    return X, y, scalers
+    return X, y, scaler_volt
 
 
 @deprecated(reason="data_preprocessing.preprocess_raw_data should be used instead")
