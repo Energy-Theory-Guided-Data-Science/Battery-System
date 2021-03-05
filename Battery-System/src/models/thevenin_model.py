@@ -496,7 +496,7 @@ class v_wrapper:
         return ocv - self.r_1 * i_r1_k - self.r_0 * i_k
     
 # -------------------------- predict voltage --------------------------
-def vis_predict(profile, r_0, r_1, c_1, params, MODEL_ID):
+def vis_predict(profile, r_0, r_1, c_1, params):
     # ------------- load data -------------
     test_current, test_voltage = load_profile(profile, params, cutoff_time = 700)
     test_voltage_time = test_voltage[:,0]
@@ -555,6 +555,7 @@ def vis_predict(profile, r_0, r_1, c_1, params, MODEL_ID):
     print('MSE(\u03BCV):', round(metrics.mean_squared_error(test_voltage_profile, v), 7) * 1000000)
 
     # save plots and predicted sequences
+    MODEL_ID = str(np.random.randint(10000))
     print('Model saved to: ' + str(MODEL_ID) + "/")
     np.save('../../../models/T/theory_baseline-' + profile + '-' + str(MODEL_ID) + '-predicted_profile.npy', v)
     fig.savefig('../../../reports/figures/theory_baseline-' + str(MODEL_ID) + '-test_profile.png')
