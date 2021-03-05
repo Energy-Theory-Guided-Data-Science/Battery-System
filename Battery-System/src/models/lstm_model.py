@@ -329,7 +329,7 @@ class Model:
         return yhat_train_unscaled, yhat_validation_unscaled, yhat_test_unscaled, delta_test, time, fig
 
 
-    def test_usecases(self, X_train, y_train, X_test_1, y_test_1, X_test_2, y_test_2, X_test_3, y_test_3, scalers_train):
+    def test_usecases(self, X_train, y_train, X_case_1, y_case_1, X_case_2, y_case_2, X_case_3, y_case_3, scalers_train):
         # --------- predict on data ---------
         time_train = TimeHistory()
         yhat_train = self.model.predict(X_train, callbacks=[time_train], verbose=1)
@@ -337,45 +337,70 @@ class Model:
         y_train_unscaled = scalers_train.inverse_transform(y_train)
         print('Prediction time on Training Set: ', str(round(np.sum(time_train.times), 3)) + 's')
         
-        time_test_1 = TimeHistory()
-        yhat_test_1 = self.model.predict(X_test_1, callbacks=[time_test_1], verbose=1)
-        yhat_test_1_unscaled = scalers_train.inverse_transform(yhat_test_1)
-        y_test_1_unscaled = scalers_train.inverse_transform(y_test_1)
-        print('Prediction time on Use Case 1: ', str(round(np.sum(time_test_1.times), 3)) + 's')
+        time_case_1 = TimeHistory()
+        yhat_case_1 = self.model.predict(X_case_1, callbacks=[time_case_1], verbose=1)
+        yhat_case_1_unscaled = scalers_train.inverse_transform(yhat_case_1)
+        y_case_1_unscaled = scalers_train.inverse_transform(y_case_1)
+        print('Prediction time on Use Case 1: ', str(round(np.sum(time_case_1.times), 3)) + 's')
         
-        time_test_2 = TimeHistory()
-        yhat_test_2 = self.model.predict(X_test_2, callbacks=[time_test_2], verbose=1)
-        yhat_test_2_unscaled = scalers_train.inverse_transform(yhat_test_2)
-        y_test_2_unscaled = scalers_train.inverse_transform(y_test_2)
-        print('Prediction time on Use Case 2: ', str(round(np.sum(time_test_2.times), 3)) + 's')
+        time_case_2 = TimeHistory()
+        yhat_case_2 = self.model.predict(X_case_2, callbacks=[time_case_2], verbose=1)
+        yhat_case_2_unscaled = scalers_train.inverse_transform(yhat_case_2)
+        y_case_2_unscaled = scalers_train.inverse_transform(y_case_2)
+        print('Prediction time on Use Case 2: ', str(round(np.sum(time_case_2.times), 3)) + 's')
 
-        time_test_3 = TimeHistory()
-        yhat_test_3 = self.model.predict(X_test_3, callbacks=[time_test_3], verbose=1)
-        yhat_test_3_unscaled = scalers_train.inverse_transform(yhat_test_3)
-        y_test_3_unscaled = scalers_train.inverse_transform(y_test_3)
-        print('Prediction time on Use Case 3: ', str(round(np.sum(time_test_3.times), 3)) + 's')
+        time_case_3 = TimeHistory()
+        yhat_case_3 = self.model.predict(X_case_3, callbacks=[time_case_3], verbose=1)
+        yhat_case_3_unscaled = scalers_train.inverse_transform(yhat_case_3)
+        y_case_3_unscaled = scalers_train.inverse_transform(y_case_3)
+        print('Prediction time on Use Case 3: ', str(round(np.sum(time_case_3.times), 3)) + 's')
 
         # --------- compute error ---------
         train_mse = metrics.mean_squared_error(y_train_unscaled, yhat_train_unscaled)
-        test_1_mse = metrics.mean_squared_error(y_test_1_unscaled, yhat_test_1_unscaled)
-        test_2_mse = metrics.mean_squared_error(y_test_2_unscaled, yhat_test_2_unscaled)
-        test_3_mse = metrics.mean_squared_error(y_test_3_unscaled, yhat_test_3_unscaled)
+        case_1_mse = metrics.mean_squared_error(y_case_1_unscaled, yhat_case_1_unscaled)
+        case_2_mse = metrics.mean_squared_error(y_case_2_unscaled, yhat_case_2_unscaled)
+        case_3_mse = metrics.mean_squared_error(y_case_3_unscaled, yhat_case_3_unscaled)
 
         train_mae = metrics.mean_absolute_error(y_train_unscaled, yhat_train_unscaled)
-        test_1_mae = metrics.mean_absolute_error(y_test_1_unscaled, yhat_test_1_unscaled)
-        test_2_mae = metrics.mean_absolute_error(y_test_2_unscaled, yhat_test_2_unscaled)
-        test_3_mae = metrics.mean_absolute_error(y_test_3_unscaled, yhat_test_3_unscaled)
+        case_1_mae = metrics.mean_absolute_error(y_case_1_unscaled, yhat_case_1_unscaled)
+        case_2_mae = metrics.mean_absolute_error(y_case_2_unscaled, yhat_case_2_unscaled)
+        case_3_mae = metrics.mean_absolute_error(y_case_3_unscaled, yhat_case_3_unscaled)
         
         train_max = metrics.max_error(y_train_unscaled, yhat_train_unscaled)
-        test_1_max = metrics.max_error(y_test_1_unscaled, yhat_test_1_unscaled)
-        test_2_max = metrics.max_error(y_test_2_unscaled, yhat_test_2_unscaled)
-        test_3_max = metrics.max_error(y_test_3_unscaled, yhat_test_3_unscaled)
+        case_1_max = metrics.max_error(y_case_1_unscaled, yhat_case_1_unscaled)
+        case_2_max = metrics.max_error(y_case_2_unscaled, yhat_case_2_unscaled)
+        case_3_max = metrics.max_error(y_case_3_unscaled, yhat_case_3_unscaled)
         
         # --------- visualize results ---------
         print('##############################################################')
-        error_table = tabulate([['MSE (\u03BCV)', round(train_mse, 7) * 1000000, round(test_1_mse, 7) * 1000000, round(test_2_mse, 7) * 1000000, round(test_3_mse, 7) * 1000000], 
-          ['MAE (V)', round(train_mae, 4), round(test_1_mae, 4), round(test_2_mae, 4), round(test_3_mae, 4)], 
-          ['MaxE (V)', round(train_max, 4), round(test_1_max, 4), round(test_2_max, 4), round(test_3_max, 4)]], headers=['Training', 'Use Case 1', 'Use Case 2', 'Use Case 3'])
+        error_table = tabulate([['MSE (\u03BCV)', round(train_mse, 7) * 1000000, round(case_1_mse, 7) * 1000000, round(case_2_mse, 7) * 1000000, round(case_3_mse, 7) * 1000000], 
+          ['MAE (V)', round(train_mae, 4), round(case_1_mae, 4), round(case_2_mae, 4), round(case_3_mae, 4)], 
+          ['MaxE (V)', round(train_max, 4), round(case_1_max, 4), round(case_2_max, 4), round(case_3_max, 4)]], headers=['Training', 'Use Case 1', 'Use Case 2', 'Use Case 3'])
         print(error_table)
         print('##############################################################')
+        
+        fig,_ = plt.subplots(figsize=(7,16))
+        plt.subplot(3,1,1)
+        time_case_1 = np.arange(yhat_case_1_unscaled.shape[0]) * 0.25
+        plt.plot(time_case_1, yhat_case_1_unscaled, color='red', label='predicted')
+        plt.plot(time_case_1, y_case_1_unscaled, color='blue', label='measured')
+        plt.ylabel('voltage (V)')
+        plt.title('Use Case 1')
+        plt.legend()
+        plt.subplot(3,1,2)
+        time_case_2 = np.arange(yhat_case_2_unscaled.shape[0]) * 0.25
+        plt.plot(time_case_2, yhat_case_2_unscaled, color='red', label='predicted')
+        plt.plot(time_case_2, y_case_2_unscaled, color='blue', label='measured')
+        plt.ylabel('voltage (V)')
+        plt.title('Use Case 2')
+        plt.legend()
+        plt.subplot(3,1,3)
+        time_case_3 = np.arange(yhat_case_3_unscaled.shape[0]) * 0.25
+        plt.plot(time_case_3, yhat_case_3_unscaled, color='red', label='predicted')
+        plt.plot(time_case_3, y_case_3_unscaled, color='blue', label='measured')
+        plt.ylabel('voltage (V)')
+        plt.ylabel('time (s)')
+        plt.title('Use Case 3')
+        plt.legend()
+        plt.show()
     
