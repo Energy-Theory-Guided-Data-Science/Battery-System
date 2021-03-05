@@ -318,8 +318,8 @@ def prepare_current_input(params, profiles, slave, cell):
         voltage_raw = np.append(voltage_raw, load_voltage_raw_data(profile, slave, cell), axis=0)
     
     # preprocess data
-    current_preprocessed, _ = preprocess_raw_data(params, current_raw)    
-    voltage_preprocessed, scaler_volt = preprocess_raw_data(params, voltage_raw)
+    current_preprocessed, _ = preprocess_raw_current(params, current_raw)    
+    voltage_preprocessed, scaler_volt = preprocess_raw_current(params, voltage_raw)
 
     # align current sequence to voltage if sample frequency differs
     if voltage_preprocessed.shape[0] != current_preprocessed.shape[0]:
@@ -354,10 +354,6 @@ def prepare_current_charge_input(params, profiles, slave, cell):
         current_preprocessed, _ = preprocess_raw_current(params, current_raw)    
         charge_preprocessed, _ = preprocess_raw_charge(params, charge_raw)
         voltage_preprocessed, scaler_volt = preprocess_raw_voltage(params, voltage_raw)
-        
-#         if (i == 0):
-#             plt.plot(current_preprocessed)
-#             plt.plot(charge_preprocessed)
 
         # align current sequence to voltage if sample frequency differs
         if voltage_preprocessed.shape[0] != current_preprocessed.shape[0]:
@@ -378,7 +374,6 @@ def prepare_current_charge_input(params, profiles, slave, cell):
         if (i == 0):
             X = profile_X
             y = profile_y
-            scalers = scaler_cur, scaler_charge, scaler_volt
         else:
             X = np.append(X, profile_X, axis=0)
             y = np.append(y, profile_y, axis=0)
@@ -410,11 +405,6 @@ def prepare_current_charge_delta_input(params, profiles, slave, cell):
         charge_preprocessed, _ = preprocess_raw_charge(params, charge_raw)
         voltage_preprocessed, scaler_volt = preprocess_delta_voltage(params, voltage_delta)
         intial_voltage_preprocessed, _ = preprocess_raw_voltage(params, initial_voltage)
-
-#         if (i == 0):
-#             plt.plot(current_preprocessed)
-#             plt.plot(charge_preprocessed)
-        plt.plot(intial_voltage_preprocessed)
 
         # align current sequence to voltage if sample frequency differs
         if voltage_preprocessed.shape[0] != current_preprocessed.shape[0]:
