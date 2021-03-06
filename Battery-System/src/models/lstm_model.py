@@ -294,7 +294,6 @@ class Model:
         print(error_table)
         print('###########################################################')
         
-        
         fig,_ = plt.subplots(figsize=(14,10))
         plt.subplot(2,2,1)
         time_val = np.arange(yhat_validation_unscaled.shape[0]) * 0.25
@@ -403,4 +402,4 @@ class Model:
         plt.title('Use Case 3')
         plt.legend()
         plt.show()
-    
+        
