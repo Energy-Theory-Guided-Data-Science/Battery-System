@@ -249,6 +249,32 @@ def preprocess_delta_voltage(params, sequence):
     
     return sequence, scaler
 
+def preprocess_raw_thevenin(params, sequence):
+    sequence = smooth(sequence, params['gauss_sigma'])
+    sequence = np.reshape(sequence, (-1, 1))
+    
+    scaler = MinMaxScaler(feature_range=(params['feature_range_volt_low'], params['feature_range_volt_high']))
+    
+    boundaries = [params['boundary_voltage_low'], params['boundary_voltage_high']]
+    boundaries = np.reshape(boundaries, (-1, 1))
+    scaler.fit(boundaries)
+    
+    sequence = scaler.transform(sequence)
+    
+    return sequence, scaler
+
+# ---------------------------------------- Prediction Thevenin Model -------------------------------------------------
+def predict_thevenin(params, profile):
+    thevenin_params = np.load('../../../models/T/theory_baseline-' + str(params['theory_model']) + '-parameters.npy', allow_pickle=True)
+    thevenin_params = thevenin_params.item()
+
+    thevenin_hyperparams = np.load('../../../models/T/theory_baseline-' + str(params['theory_model']) + '-hyperparameters.npy', allow_pickle=True)
+    thevenin_hyperparams = thevenin_hyperparams.item()
+
+    theory_raw = thevenin.predict(profile, thevenin_params['r_0'], thevenin_params['r_1'], thevenin_params['c_1'], thevenin_hyperparams)
+    
+    return theory_raw
+
 # ---------------------------------------- Prepare Network Input -------------------------------------------------
 def prepare_data(params, profiles, slave, cell):
     """Prepares the requested data to be suitable for the network.
@@ -345,7 +371,7 @@ def prepare_current_charge_input(params, profiles, slave, cell):
         charge_raw = []
         q_t = 0
         for j in range(len(current_raw)):
-            q_t += current_raw[j] * params['d_t']  / 3600
+            q_t += current_raw[j] * (params['d_t'] * params['d_sample'])  / 3600
             charge_raw.append(q_t)
         
         voltage_raw = load_voltage_raw_data(profile, slave, cell)
@@ -393,7 +419,7 @@ def prepare_current_charge_delta_input(params, profiles, slave, cell):
         charge_raw = []
         q_t = 0
         for j in range(len(current_raw)):
-            q_t += current_raw[j] * params['d_t']  / 3600
+            q_t += current_raw[j] * (params['d_t'] * params['d_sample'])  / 3600
             charge_raw.append(q_t)
         
         voltage_raw = load_voltage_raw_data(profile, slave, cell)
@@ -447,20 +473,13 @@ def prepare_hybrid_input(params, profiles, slave, cell):
         charge_raw = []
         q_t = 0
         for j in range(len(current_raw)):
-            q_t += current_raw[j] * params['d_t']  / 3600
+            q_t += current_raw[j] * (params['d_t'] * params['d_sample'])  / 3600
             charge_raw.append(q_t)
         
         voltage_raw = load_voltage_raw_data(profile, slave, cell)
         
         # predict on theory model
-        thevenin_params = np.load('../../../models/T/theory_baseline-' + str(params['theory_model']) + '-parameters.npy', allow_pickle=True)
-        thevenin_params = thevenin_params.item()
-
-        thevenin_hyperparams = np.load('../../../models/T/theory_baseline-' + str(params['theory_model']) + '-hyperparameters.npy', allow_pickle=True)
-        thevenin_hyperparams = thevenin_hyperparams.item()
-
-        theory_raw = thevenin.predict(profile, thevenin_params['r_0'], thevenin_params['r_1'], thevenin_params['c_1'], thevenin_hyperparams)
-        
+        theory_raw = predict_thevenin(params, profile)
         
         # preprocess data
         current_preprocessed, _ = preprocess_raw_current(params, current_raw)    
@@ -502,6 +521,73 @@ def prepare_hybrid_input(params, profiles, slave, cell):
 #     plt.plot(debug_list)
     print('Input:', X.shape, ', Output/Label:', y.shape)    
     return X, y, scaler_volt
+
+def prepare_residual_input(params, profiles, slave, cell):
+    i = 0
+    
+    for profile in profiles:
+        # load data
+        current_raw = load_current_raw_data(profile)
+        
+        charge_raw = []
+        q_t = 0
+        for j in range(len(current_raw)):
+            q_t += current_raw[j] * (params['d_t'] * params['d_sample'])  / 3600
+            charge_raw.append(q_t)
+        
+        voltage_raw = load_voltage_raw_data(profile, slave, cell)
+        theory_raw = predict_thevenin(params, profile)
+        
+        # preprocess data
+        current_preprocessed, _ = preprocess_raw_current(params, current_raw)    
+        charge_preprocessed, _ = preprocess_raw_charge(params, charge_raw)
+        voltage_preprocessed, scaler_volt = preprocess_raw_voltage(params, voltage_raw)
+        theory_preprocessed, _ = preprocess_raw_thevenin(params, theory_raw)
+        
+        # repare residual data
+        residual_preprocessed = voltage_preprocessed - theory_preprocessed
+
+        # align current sequence to voltage if sample frequency differs
+        if residual_preprocessed.shape[0] != current_preprocessed.shape[0]:
+            current_preprocessed = align(current_preprocessed, residual_preprocessed)
+            charge_preprocessed = align(charge_preprocessed, residual_preprocessed)
+
+        # create input features
+        profile_X1, profile_y = subsequences(current_preprocessed, residual_preprocessed, params['n_steps'])
+        profile_y = np.reshape(profile_y, (-1, 1))
+        profile_X1 = profile_X1.reshape(profile_X1.shape[0], profile_X1.shape[1], 1)
+
+        profile_X2, _ = subsequences(charge_preprocessed, residual_preprocessed, params['n_steps'])
+        profile_X2 = profile_X2.reshape(profile_X2.shape[0], profile_X2.shape[1], 1)
+        
+        profile_X = np.append(profile_X1, profile_X2, axis=2)
+
+        # append for multiple profiles
+        if (i == 0):
+            X = profile_X
+            y = profile_y
+            u = theory_preprocessed
+        else:
+            X = np.append(X, profile_X, axis=0)
+            y = np.append(y, profile_y, axis=0)
+            u = np.append(u, theory_preprocessed, axis=0)
+        i += 1
+    
+    print('Input:', X.shape, ', Output/Label:', y.shape)    
+    return X, y, u, scaler_volt
+
+def prepare_thevenin_pred(params, profiles):
+    i = 0
+    for profile in profiles:
+
+        if (i == 0):
+            uhat = predict_thevenin(params, profile)
+        else:
+            uhat = np.append(uhat, predict_thevenin(params, profile), axis=0)
+        i += 1
+
+    uhat, _ = preprocess_raw_voltage(params, uhat)
+    return uhat
 
 
 @deprecated(reason="data_preprocessing.preprocess_raw_data should be used instead")
