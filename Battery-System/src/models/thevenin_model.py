@@ -556,9 +556,8 @@ def vis_predict(profile, r_0, r_1, c_1, params):
 
     # save plots and predicted sequences
     MODEL_ID = str(np.random.randint(10000))
-    print('Model saved to: ' + str(MODEL_ID) + "/")
-    np.save('../../../models/T/theory_baseline-' + profile + '-' + str(MODEL_ID) + '-predicted_profile.npy', v)
-    fig.savefig('../../../reports/figures/theory_baseline-' + str(MODEL_ID) + '-test_profile.png')
+    print('Saved plot to:', '../../../reports/figures/theory_baseline-' + str(MODEL_ID) + '-' + profile + '-test_profile.png')
+    fig.savefig('../../../reports/figures/theory_baseline-' + str(MODEL_ID) + '-' + profile + '-test_profile.png')
     
     
 def predict(profile, r_0, r_1, c_1, params):
