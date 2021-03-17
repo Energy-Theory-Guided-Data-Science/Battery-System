@@ -637,6 +637,96 @@ def prepare_pretraining_input(params, profiles, slave, cell):
     print('Input:', X.shape, ', Output/Label:', y.shape)
     return X, y, scaler_volt
 
+def prepare_intermediate_soc(params, profiles, slave, cell):
+    i = 0
+    
+    for profile in profiles:   
+        voltage_raw = load_voltage_raw_data(profile, slave, cell)
+        
+        # compute current SOC at start of profile
+        soc = thevenin.ocv_inverse_exact(voltage_raw[0])
+        initial_soc = np.repeat(soc, len(voltage_raw))
+
+        # preprocess data
+        voltage_preprocessed, scaler_volt = preprocess_raw_voltage(params, voltage_raw)
+        
+        # align current sequence to voltage if sample frequency differs
+        if voltage_preprocessed.shape[0] != initial_soc.shape[0]:
+            initial_soc = align(initial_soc, voltage_preprocessed)
+
+        # create input feature sequence
+        # ----
+        sequence_X = np.append(np.repeat(initial_soc[0], params['n_steps'] - 1), initial_soc)
+
+        profile_X = list()
+        for j in range(len(sequence_X)):
+            end_ix = j + params['n_steps']
+
+            if end_ix > len(sequence_X):
+                break
+
+            profile_X.append(sequence_X[j])
+            
+        profile_X = np.array(profile_X)
+        profile_X = np.reshape(profile_X, (-1, 1))        
+        # ----
+        
+        # append for multiple profiles
+        if (i == 0):
+            X = profile_X
+        else:
+            X = np.append(X, profile_X, axis=0)
+        i += 1
+    
+    print('Input:', X.shape) 
+    return X
+
+def prepare_intermediate_volt(params, profiles, slave, cell):
+    i = 0
+    
+    for profile in profiles:   
+        voltage_raw = load_voltage_raw_data(profile, slave, cell)
+        initial_voltage = np.repeat(voltage_raw[0], len(voltage_raw))
+
+        # compute current SOC at start of profile
+        soc = thevenin.ocv_inverse_exact(voltage_raw[0])
+        initial_soc = np.repeat(soc, len(voltage_raw))
+
+        # preprocess data
+        voltage_preprocessed, scaler_volt = preprocess_raw_voltage(params, voltage_raw)
+        intial_voltage_preprocessed, _ = preprocess_raw_voltage(params, initial_voltage)
+
+        # align current sequence to voltage if sample frequency differs
+        if voltage_preprocessed.shape[0] != intial_voltage_preprocessed.shape[0]:
+            intial_voltage_preprocessed = align(intial_voltage_preprocessed, voltage_preprocessed)
+
+        # create input feature sequence
+        # ----
+        sequence_X = np.append(np.repeat(intial_voltage_preprocessed[0], params['n_steps'] - 1), intial_voltage_preprocessed)
+
+        profile_X = list()
+        for j in range(len(sequence_X)):
+            end_ix = j + params['n_steps']
+
+            if end_ix > len(sequence_X):
+                break
+
+            profile_X.append(sequence_X[j])
+            
+        profile_X = np.array(profile_X)
+        profile_X = np.reshape(profile_X, (-1, 1))        
+        # ----
+        
+        plt.plot(profile_X)
+        # append for multiple profiles
+        if (i == 0):
+            X = profile_X
+        else:
+            X = np.append(X, profile_X, axis=0)
+        i += 1
+        
+    return X
+
 @deprecated(reason="data_preprocessing.preprocess_raw_data should be used instead")
 def prepare(input_sequence, label_sequence, aligned, d_sample, n_steps, sigma):
     """Prepares the data for input into the LSTM.
