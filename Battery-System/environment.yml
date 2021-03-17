@@ -14,3 +14,4 @@ dependencies:
   - pip:
     - numpy
     - tensorflow
+    - cond-rnn
