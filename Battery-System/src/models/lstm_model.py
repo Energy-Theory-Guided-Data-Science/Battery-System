@@ -156,7 +156,7 @@ class Model:
                 A dictionary containing the hyperparameters
         """
         # --------- create model ---------
-        model = tf.keras.Sequential(name='Black Box LSTM')
+        model = tf.keras.Sequential(name='BlackBoxLSTM')
         # layer 1
         model.add(layers.LSTM(units=params['n_lstm_units_1'], input_shape=(params['n_steps'], params['n_features']), return_sequences=True))
         model.add(layers.LeakyReLU(alpha=params['alpha_1']))

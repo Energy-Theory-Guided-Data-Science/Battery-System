@@ -95,7 +95,7 @@ class Residual_Model:
         """
         
         # --------- create model ---------
-        model = tf.keras.Sequential(name='Residual LSTM')
+        model = tf.keras.Sequential(name='ResidualLSTM')
         # layer 1
         model.add(layers.LSTM(units=params['n_lstm_units_1'], input_shape=(params['n_steps'], params['n_features']), return_sequences=True))
         model.add(layers.LeakyReLU(alpha=params['alpha_1']))
