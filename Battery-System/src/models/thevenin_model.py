@@ -7,6 +7,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import src.data.data_preprocessing as util
 import sklearn.metrics as metrics
+from tabulate import tabulate
 
 # -------------------------- utility functions --------------------------
 def cut_profile(sequence, cutoff_time):
@@ -552,7 +553,7 @@ def vis_predict(profile, r_0, r_1, c_1, params):
     plt.show()
 
     print('------------------- Evaluation -------------------')
-    print('MSE(\u03BCV):', round(metrics.mean_squared_error(test_voltage_profile, v), 7) * 1000000)
+    print('MSE(\u03BCV):', round(round(metrics.mean_squared_error(test_voltage_profile, v), 7) * 1000000, 2))
 
     # save plots and predicted sequences
     MODEL_ID = str(np.random.randint(10000))
@@ -592,3 +593,106 @@ def predict(profile, r_0, r_1, c_1, params):
     vhat_profile = np.array(vhat_profile)    
     v = util.align(vhat_profile, test_voltage_profile)
     return v
+
+def vis_predict_usecases(profiles, r_0, r_1, c_1, params):
+    
+    i = 0
+    test_voltage_times = list()
+    test_voltage_profiles = list()
+    v_hats = list()
+    
+    for profile in profiles:
+        # ------------- load data -------------
+        test_current, test_voltage = load_profile(profile, params, cutoff_time = 700)
+        test_voltage_time = test_voltage[:,0]
+        test_voltage_times.append(test_voltage_time)
+        test_voltage_profile = test_voltage[:,1]
+        test_voltage_profiles.append(test_voltage_profile)
+        test_current_time = test_current[:,0]
+        test_current_profile = test_current[:,1]
+
+        z_1, v_1, z_2, v_2, ocv_curve_exact_lin = get_SOC_values(profile, params)
+
+        # ------------- set parameters -------------
+        v_0 = test_voltage_profile[0]
+        z_t0 = ocv_inverse_simple(v_0, ocv_curve_exact_lin)
+        q = 33.2 # expert knowledge
+
+        print('------------------- Params -------------------')
+        print('v_0 (V):', round(v_0, 5))
+        print('z_t0 (%):', round(z_t0 * 100, 2))
+        print('Q (Ah):', q)
+
+        # ------------- predict profile -------------
+        v_class = v_wrapper(z_t0, q, r_0, r_1, c_1)
+        vhat_profile = list()
+
+        for i in range(test_current_profile.shape[0]):
+            if (i == 0):
+                d_t = 0.25 * params['sampling_rate']
+            else:
+                d_t = test_current_time[i] - test_current_time[i-1]
+
+            i_k = - test_current_profile[i] # i_k is negative on charge and positive on discharge
+            vhat = v_class.v_k(i_k, d_t * 2, z_1, v_1, z_2, v_2, ocv_curve_exact_lin)
+            vhat_profile.append(vhat)
+
+        vhat_profile = np.array(vhat_profile)    
+        v = util.align(vhat_profile, test_voltage_profile)
+        v_hats.append(v)
+        i += 1
+
+    
+    # --------- compute error ---------
+    train_mse = metrics.mean_squared_error(v_hats[0], test_voltage_profiles[0])
+    case_1_mse = metrics.mean_squared_error(v_hats[1], test_voltage_profiles[1])
+    case_2_mse = metrics.mean_squared_error(v_hats[2], test_voltage_profiles[2])
+    case_3_mse = metrics.mean_squared_error(v_hats[3], test_voltage_profiles[3])
+
+    train_mae = metrics.mean_absolute_error(v_hats[0], test_voltage_profiles[0])
+    case_1_mae = metrics.mean_absolute_error(v_hats[1], test_voltage_profiles[1])
+    case_2_mae = metrics.mean_absolute_error(v_hats[2], test_voltage_profiles[2])
+    case_3_mae = metrics.mean_absolute_error(v_hats[3], test_voltage_profiles[3])
+
+    train_max = metrics.max_error(v_hats[0], test_voltage_profiles[0])
+    case_1_max = metrics.max_error(v_hats[1], test_voltage_profiles[1])
+    case_2_max = metrics.max_error(v_hats[2], test_voltage_profiles[2])
+    case_3_max = metrics.max_error(v_hats[3], test_voltage_profiles[3])
+
+    # --------- visualize results ---------
+    print('##############################################################')
+    error_table = tabulate([['MSE (\u03BCV)', round(train_mse, 7) * 1000000, round(case_1_mse, 7) * 1000000, round(case_2_mse, 7) * 1000000, round(case_3_mse, 7) * 1000000], 
+      ['MAE (V)', round(train_mae, 4), round(case_1_mae, 4), round(case_2_mae, 4), round(case_3_mae, 4)], 
+      ['MaxE (V)', round(train_max, 4), round(case_1_max, 4), round(case_2_max, 4), round(case_3_max, 4)]], headers=['Training', 'Use Case 1', 'Use Case 2', 'Use Case 3'])
+    print(error_table)
+    print('##############################################################')
+
+    fig,_ = plt.subplots(figsize=(7,16))
+    plt.subplot(3,1,1)
+    plt.plot(test_voltage_times[1], v_hats[1], color='red', label='predicted')
+    plt.plot(test_voltage_times[1], test_voltage_profiles[1], color='blue', label='measured')
+    plt.ylabel('voltage (V)')
+    plt.title('Use Case 1')
+    plt.legend()
+    plt.subplot(3,1,2)
+    plt.plot(test_voltage_times[2], v_hats[2], color='red', label='predicted')
+    plt.plot(test_voltage_times[2], test_voltage_profiles[2], color='blue', label='measured')
+    plt.ylabel('voltage (V)')
+    plt.title('Use Case 2')
+    plt.legend()
+    plt.subplot(3,1,3)
+    plt.plot(test_voltage_times[3], v_hats[3], color='red', label='predicted')
+    plt.plot(test_voltage_times[3], test_voltage_profiles[3], color='blue', label='measured')
+    plt.ylabel('voltage (V)')
+    plt.ylabel('time (s)')
+    plt.title('Use Case 3')
+    plt.legend()
+    plt.show()
+    
+    return v
+#     # save plots and predicted sequences
+#     MODEL_ID = str(np.random.randint(10000))
+#     print('Saved plot to:', '../../../reports/figures/theory_baseline-' + str(MODEL_ID) + '-' + profile + '-test_profile.png')
+#     fig.savefig('../../../reports/figures/theory_baseline-' + str(MODEL_ID) + '-' + profile + '-test_profile.png')
+#     return v
+
