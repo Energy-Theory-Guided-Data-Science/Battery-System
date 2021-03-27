@@ -358,7 +358,6 @@ def prepare_current_input(params, profiles, slave, cell):
         profile_y = np.reshape(profile_y, (-1, 1))
         profile_X = profile_X.reshape(profile_X.shape[0], profile_X.shape[1], 1)
 
-
         # append for multiple profiles
         if (i == 0):
             X = profile_X
@@ -386,7 +385,7 @@ def prepare_current_charge_input(params, profiles, slave, cell):
             charge_raw.append(q_t)
         
         voltage_raw = load_voltage_raw_data(profile, slave, cell)
-        
+                
         # preprocess data
         current_preprocessed, _ = preprocess_raw_current(params, current_raw)    
         charge_preprocessed, _ = preprocess_raw_charge(params, charge_raw)
@@ -406,6 +405,58 @@ def prepare_current_charge_input(params, profiles, slave, cell):
         profile_X2 = profile_X2.reshape(profile_X2.shape[0], profile_X2.shape[1], 1)
 
         profile_X = np.append(profile_X1, profile_X2, axis=2)
+        
+        # ---
+        # ---
+        
+        # append for multiple profiles
+        if (i == 0):
+            X = profile_X
+            y = profile_y
+        else:
+            X = np.append(X, profile_X, axis=0)
+            y = np.append(y, profile_y, axis=0)
+        i += 1
+    
+    print('Input:', X.shape, ' Output/Label:', y.shape)
+    return X, y, scaler_volt
+
+def prepare_intermediate_input(params, profiles, slave, cell):
+    i = 0
+    
+    for profile in profiles:
+        # load data
+        current_raw = load_current_raw_data(profile)
+        
+        charge_raw = []
+        q_t = 0
+        for j in range(len(current_raw)):
+            q_t += current_raw[j] * (params['d_t'] * params['d_sample']) / 3600
+            charge_raw.append(q_t)
+        
+        voltage_raw = load_voltage_raw_data(profile, slave, cell)
+                
+        # preprocess data
+        current_preprocessed, _ = preprocess_raw_current(params, current_raw)    
+        charge_preprocessed, _ = preprocess_raw_charge(params, charge_raw)
+        voltage_preprocessed, scaler_volt = preprocess_raw_voltage(params, voltage_raw)
+
+        # align current sequence to voltage if sample frequency differs
+        if voltage_preprocessed.shape[0] != current_preprocessed.shape[0]:
+            current_preprocessed = align(current_preprocessed, voltage_preprocessed)
+            charge_preprocessed = align(charge_preprocessed, voltage_preprocessed)
+
+        # create input features
+        profile_X1, profile_y = subsequences(current_preprocessed, voltage_preprocessed, params['n_steps'])
+        profile_y = np.reshape(profile_y, (-1, 1))
+        profile_X1 = profile_X1.reshape(profile_X1.shape[0], profile_X1.shape[1], 1)
+
+        profile_X2, _ = subsequences(charge_preprocessed, voltage_preprocessed, params['n_steps'])
+        profile_X2 = profile_X2.reshape(profile_X2.shape[0], profile_X2.shape[1], 1)
+
+        profile_X = np.append(profile_X1, profile_X2, axis=2)
+        profile_y = np.append(profile_y, current_preprocessed, axis=1) 
+        
 
         # append for multiple profiles
         if (i == 0):
@@ -420,52 +471,54 @@ def prepare_current_charge_input(params, profiles, slave, cell):
     return X, y, scaler_volt
 
 
-def prepare_current_charge_delta_input(params, profiles, slave, cell):
+def prepare_thevenin_input(params, profiles, slave, cell):
     i = 0
     
     for profile in profiles:
         # load data
         current_raw = load_current_raw_data(profile)
-        
-        charge_raw = []
-        q_t = 0
-        for j in range(len(current_raw)):
-            q_t += current_raw[j] * (params['d_t'] * params['d_sample'])  / 3600
-            charge_raw.append(q_t)
-        
         voltage_raw = load_voltage_raw_data(profile, slave, cell)
-        voltage_delta = voltage_raw - voltage_raw[0] # only predict voltage delta
-        initial_voltage = np.repeat(voltage_raw[0], len(voltage_raw))
-                
+        
+        # --- SOC ---
+        _, _, _, _, ocv_curve_exact_lin = thevenin.get_SOC_values(profile, params)
+        v_0 = voltage_raw[0]
+        z_t0 = thevenin.ocv_inverse_simple(v_0, ocv_curve_exact_lin)
+        q = 33.2 # expert knowledge
+        z_class = thevenin.z_wrapper(z_t0, q)
+        
+        ocv = []
+        for j in range(len(current_raw)):
+            i_k = current_raw[j]
+            z_k = z_class.z(-i_k, params['d_t']) # i > 0 on discharge, i < 0 on charge
+            ocv.append(thevenin.ocv_exact_lin(z_k))
+        # --- SOC ---
+
         # preprocess data
         current_preprocessed, _ = preprocess_raw_current(params, current_raw)    
-        charge_preprocessed, _ = preprocess_raw_charge(params, charge_raw)
-        voltage_preprocessed, scaler_volt = preprocess_delta_voltage(params, voltage_delta)
-        intial_voltage_preprocessed, _ = preprocess_raw_voltage(params, initial_voltage)
+        ocv_preprocessed, _ = preprocess_raw_voltage(params, ocv)
+        voltage_preprocessed, scaler_volt = preprocess_raw_voltage(params, voltage_raw)
 
         # align current sequence to voltage if sample frequency differs
         if voltage_preprocessed.shape[0] != current_preprocessed.shape[0]:
             current_preprocessed = align(current_preprocessed, voltage_preprocessed)
-            charge_preprocessed = align(charge_preprocessed, voltage_preprocessed)
+            ocv_preprocessed = align(ocv_preprocessed, voltage_preprocessed)
 
         # create input features
         profile_X1, profile_y = subsequences(current_preprocessed, voltage_preprocessed, params['n_steps'])
         profile_y = np.reshape(profile_y, (-1, 1))
         profile_X1 = profile_X1.reshape(profile_X1.shape[0], profile_X1.shape[1], 1)
-
-        profile_X2, _ = subsequences(charge_preprocessed, voltage_preprocessed, params['n_steps'])
+        
+        profile_X2, _ = subsequences(ocv_preprocessed, voltage_preprocessed, params['n_steps'])
         profile_X2 = profile_X2.reshape(profile_X2.shape[0], profile_X2.shape[1], 1)
         
-        profile_X3, _ = subsequences(intial_voltage_preprocessed, voltage_preprocessed, params['n_steps'])
-        profile_X3 = profile_X3.reshape(profile_X3.shape[0], profile_X3.shape[1], 1)
-
         profile_X = np.append(profile_X1, profile_X2, axis=2)
-        profile_X = np.append(profile_X, profile_X3, axis=2)
 
         # append for multiple profiles
         if (i == 0):
             X = profile_X
             y = profile_y
+#             plt.plot(ocv_preprocessed)
+#             plt.plot(profile_y)
         else:
             X = np.append(X, profile_X, axis=0)
             y = np.append(y, profile_y, axis=0)
@@ -481,11 +534,11 @@ def prepare_hybrid_input(params, profiles, slave, cell):
         # load data
         current_raw = load_current_raw_data(profile)
         
-        charge_raw = []
-        q_t = 0
-        for j in range(len(current_raw)):
-            q_t += current_raw[j] * (params['d_t'] * params['d_sample'])  / 3600
-            charge_raw.append(q_t)
+#         charge_raw = []
+#         q_t = 0
+#         for j in range(len(current_raw)):
+#             q_t += current_raw[j] * (params['d_t'] * params['d_sample'])  / 3600
+#             charge_raw.append(q_t)
         
         voltage_raw = load_voltage_raw_data(profile, slave, cell)
         
@@ -494,28 +547,29 @@ def prepare_hybrid_input(params, profiles, slave, cell):
         
         # preprocess data
         current_preprocessed, _ = preprocess_raw_current(params, current_raw)    
-        charge_preprocessed, _ = preprocess_raw_charge(params, charge_raw)
+#         charge_preprocessed, _ = preprocess_raw_charge(params, charge_raw)
         voltage_preprocessed, scaler_volt = preprocess_raw_voltage(params, voltage_raw)
         theory_preprocessed, _ = preprocess_raw_thevenin(params, theory_raw)
         
         # align current sequence to voltage if sample frequency differs
         if voltage_preprocessed.shape[0] != current_preprocessed.shape[0]:
             current_preprocessed = align(current_preprocessed, voltage_preprocessed)
-            charge_preprocessed = align(charge_preprocessed, voltage_preprocessed)
+#             charge_preprocessed = align(charge_preprocessed, voltage_preprocessed)
 
         # create input features
         profile_X1, profile_y = subsequences(current_preprocessed, voltage_preprocessed, params['n_steps'])
         profile_y = np.reshape(profile_y, (-1, 1))
         profile_X1 = profile_X1.reshape(profile_X1.shape[0], profile_X1.shape[1], 1)
 
-        profile_X2, _ = subsequences(charge_preprocessed, voltage_preprocessed, params['n_steps'])
-        profile_X2 = profile_X2.reshape(profile_X2.shape[0], profile_X2.shape[1], 1)
+#         profile_X2, _ = subsequences(charge_preprocessed, voltage_preprocessed, params['n_steps'])
+#         profile_X2 = profile_X2.reshape(profile_X2.shape[0], profile_X2.shape[1], 1)
         
         profile_X3, _ = subsequences(theory_preprocessed, voltage_preprocessed, params['n_steps'])
         profile_X3 = profile_X3.reshape(profile_X3.shape[0], profile_X3.shape[1], 1)
         
-        profile_X = np.append(profile_X1, profile_X2, axis=2)
-        profile_X = np.append(profile_X, profile_X3, axis=2)
+        profile_X = np.append(profile_X1, profile_X3, axis=2)
+#         profile_X = np.append(profile_X1, profile_X2, axis=2)
+#         profile_X = np.append(profile_X, profile_X3, axis=2)
 
         # append for multiple profiles
         if (i == 0):
@@ -539,18 +593,18 @@ def prepare_residual_input(params, profiles, slave, cell):
         # load data
         current_raw = load_current_raw_data(profile)
         
-        charge_raw = []
-        q_t = 0
-        for j in range(len(current_raw)):
-            q_t += current_raw[j] * (params['d_t'] * params['d_sample'])  / 3600
-            charge_raw.append(q_t)
+#         charge_raw = []
+#         q_t = 0
+#         for j in range(len(current_raw)):
+#             q_t += current_raw[j] * (params['d_t'] * params['d_sample'])  / 3600
+#             charge_raw.append(q_t)
         
         voltage_raw = load_voltage_raw_data(profile, slave, cell)
         theory_raw = predict_thevenin(params, profile)
         
         # preprocess data
         current_preprocessed, _ = preprocess_raw_current(params, current_raw)    
-        charge_preprocessed, _ = preprocess_raw_charge(params, charge_raw)
+#         charge_preprocessed, _ = preprocess_raw_charge(params, charge_raw)
         voltage_preprocessed, scaler_volt = preprocess_raw_voltage(params, voltage_raw)
         theory_preprocessed, _ = preprocess_raw_thevenin(params, theory_raw)
         
@@ -560,17 +614,18 @@ def prepare_residual_input(params, profiles, slave, cell):
         # align current sequence to voltage if sample frequency differs
         if residual_preprocessed.shape[0] != current_preprocessed.shape[0]:
             current_preprocessed = align(current_preprocessed, residual_preprocessed)
-            charge_preprocessed = align(charge_preprocessed, residual_preprocessed)
+#             charge_preprocessed = align(charge_preprocessed, residual_preprocessed)
 
         # create input features
         profile_X1, profile_y = subsequences(current_preprocessed, residual_preprocessed, params['n_steps'])
         profile_y = np.reshape(profile_y, (-1, 1))
         profile_X1 = profile_X1.reshape(profile_X1.shape[0], profile_X1.shape[1], 1)
 
-        profile_X2, _ = subsequences(charge_preprocessed, residual_preprocessed, params['n_steps'])
-        profile_X2 = profile_X2.reshape(profile_X2.shape[0], profile_X2.shape[1], 1)
+#         profile_X2, _ = subsequences(charge_preprocessed, residual_preprocessed, params['n_steps'])
+#         profile_X2 = profile_X2.reshape(profile_X2.shape[0], profile_X2.shape[1], 1)
         
-        profile_X = np.append(profile_X1, profile_X2, axis=2)
+        profile_X = profile_X1
+#         profile_X = np.append(profile_X1, profile_X2, axis=2)
 
         # append for multiple profiles
         if (i == 0):
@@ -634,7 +689,7 @@ def prepare_pretraining_input(params, profiles, slave, cell):
         profile_X2 = profile_X2.reshape(profile_X2.shape[0], profile_X2.shape[1], 1)
 
         profile_X = np.append(profile_X1, profile_X2, axis=2)
-
+        
         # append for multiple profiles
         if (i == 0):
             X = profile_X
@@ -727,7 +782,6 @@ def prepare_intermediate_volt(params, profiles, slave, cell):
         profile_X = np.reshape(profile_X, (-1, 1))        
         # ----
         
-        plt.plot(profile_X)
         # append for multiple profiles
         if (i == 0):
             X = profile_X
