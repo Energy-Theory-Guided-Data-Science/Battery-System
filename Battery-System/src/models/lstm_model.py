@@ -38,94 +38,96 @@ class TimeHistory(callbacks.Callback):
 
 # --------------------------------------------- Custom Loss Functions --------------------------------------------
 
-def approximation_loss(y_true, y_pred):
-    """Computes the approximation loss as described in [1].
+# def approximation_loss(y_true, y_pred):
+#     """Computes the approximation loss as described in [1].
 
-    This loss term penalizes predictions which lay outside of the defined value range of the output.
-    The respective value range has to be set by the keys 'y_l' (lower end) and 'y_u' (upper end) in the params dictionary.
+#     This loss term penalizes predictions which lay outside of the defined value range of the output.
+#     The respective value range has to be set by the keys 'y_l' (lower end) and 'y_u' (upper end) in the params dictionary.
 
-    [1] http://people.cs.vt.edu/ramakris/papers/PID5657885.pdf
+#     [1] http://people.cs.vt.edu/ramakris/papers/PID5657885.pdf
 
-    Args:
-        y_pred (numpy.ndarray):
-            An array of the predicted output values
-        params (dict): 
-            A dictionary containing the hyperparameters
-    Returns:
-        The approximation loss of the given predictions. Zero if the predictions follow the approximation constraint, positive if not.
-    """
-    y_lower = backend.min(y_true)
-    y_upper = backend.max(y_true)
-    loss = backend.sum(backend.relu(y_lower - y_pred) + backend.relu(y_pred - y_upper))
+#     Args:
+#         y_pred (numpy.ndarray):
+#             An array of the predicted output values
+#         params (dict): 
+#             A dictionary containing the hyperparameters
+#     Returns:
+#         The approximation loss of the given predictions. Zero if the predictions follow the approximation constraint, positive if not.
+#     """
+#     y_lower = backend.min(y_true)
+#     y_upper = backend.max(y_true)
+#     loss = backend.sum(backend.relu(y_lower - y_pred) + backend.relu(y_pred - y_upper))
     
-    # to visualize loss during training
-    if (loss.numpy() != 0.0):
-        print(' - apx:', loss.numpy())
-    return loss
+#     # to visualize loss during training
+#     if (loss.numpy() != 0.0):
+#         print(' - apx:', loss.numpy())
+#     return loss
 
 
-def monotonicity_loss(y_true, y_pred):
-    """Computes the monotonicity loss as described in [1].
+# def monotonicity_loss(y_true, y_pred):
+#     """Computes the monotonicity loss as described in [1].
     
-    This loss term penalizes predictions which are not monotonicaly accending or decending according to the behaviour of the ground truth.
+#     This loss term penalizes predictions which are not monotonicaly accending or decending according to the behaviour of the ground truth.
 
-    [1] http://people.cs.vt.edu/ramakris/papers/PID5657885.pdf
+#     [1] http://people.cs.vt.edu/ramakris/papers/PID5657885.pdf
 
-    Args:
-        y_true (numpy.ndarray): 
-            An array of the groundtruth output values
-        y_pred (numpy.ndarray): 
-            An array of the predicted output values
-    Returns:
-        The monotonicity loss of the given predictions. Zero if the predictions follow the monotonicity constraint, positive if not.
-    """
-    loss = 0
-    loss_changed = False
+#     Args:
+#         y_true (numpy.ndarray): 
+#             An array of the groundtruth output values
+#         y_pred (numpy.ndarray): 
+#             An array of the predicted output values
+#     Returns:
+#         The monotonicity loss of the given predictions. Zero if the predictions follow the monotonicity constraint, positive if not.
+#     """
+#     loss = 0
+#     loss_changed = False
 
-    for i in range(len(y_true) - 1):
-        if y_true[i] < y_true[i+1] and y_pred[i] >= y_pred[i+1]:
-            # monotonic accent 
-            loss += backend.abs(y_pred[i] - y_pred[i+1])
-            loss_changed = True
+#     for i in range(len(y_true) - 1):
+#         if y_true[i] < y_true[i+1] and y_pred[i] >= y_pred[i+1]:
+#             # monotonic accent 
+#             loss += backend.abs(y_pred[i] - y_pred[i+1])
+#             loss_changed = True
             
-        elif y_true[i] > y_true[i+1] and y_pred[i] <= y_pred[i+1]:
-            # monotonic decent
-            loss += backend.abs(y_pred[i+1] - y_pred[i])
-            loss_changed = True
+#         elif y_true[i] > y_true[i+1] and y_pred[i] <= y_pred[i+1]:
+#             # monotonic decent
+#             loss += backend.abs(y_pred[i+1] - y_pred[i])
+#             loss_changed = True
   
-    if (loss_changed):
-        print(' - mon:', loss.numpy()[0])
+#     if (loss_changed):
+#         print(' - mon:', loss.numpy()[0])
 
-    return loss
+#     return loss
 
 
-def combine_losses(params):
-    """Combines multiple custom loss functions.
+# def combine_losses(params):
+#     """Combines multiple custom loss functions.
 
-    The loss functions provided by the 'loss_funcs' key in the params array will be combined in a weighted sum. 
-    Weights are determined by the respective 'lambda_xyz' key. 
+#     The loss functions provided by the 'loss_funcs' key in the params array will be combined in a weighted sum. 
+#     Weights are determined by the respective 'lambda_xyz' key. 
 
-    Args:
-        params (dict): 
-            A dictionary containing the hyperparameters
-    Returns: 
-        The combined loss value.
-    """
-    # wrapper function needed for the custom loss function to be accepted from keras
-    def loss(y_true, y_pred):
-        accumulated_loss = 0
-        loss_functions = params['loss_funcs']
+#     Args:
+#         params (dict): 
+#             A dictionary containing the hyperparameters
+#     Returns: 
+#         The combined loss value.
+#     """
+#     # wrapper function needed for the custom loss function to be accepted from keras
+#     def loss(y_true, y_pred):
+#         accumulated_loss = 0
+#         loss_functions = params['loss_funcs']
 
-        # !! add custom loss function here !!
-        if 'mse' in loss_functions:
-            accumulated_loss += params['lambda_mse'] * losses.mean_squared_error(y_true, y_pred)
-        if 'apx' in loss_functions:
-            accumulated_loss += params['lambda_apx'] * approximation_loss(y_true, y_pred)
-        if 'mon' in loss_functions:
-            accumulated_loss += params['lambda_mon'] * monotonicity_loss(y_true, y_pred)
+#         # !! add custom loss function here !!
+#         if 'mse' in loss_functions:
+#             accumulated_loss += params['lambda_mse'] * losses.mean_squared_error(y_true, y_pred)
+#         if 'apx' in loss_functions:
+#             accumulated_loss += params['lambda_apx'] * approximation_loss(y_true, y_pred)
+#         if 'mon' in loss_functions:
+#             accumulated_loss += params['lambda_mon'] * monotonicity_loss(y_true, y_pred)
+# #         if 'soc' in loss_functions:
+# #             accumulated_loss += params['lambda_soc'] * 
 
-        return accumulated_loss
-    return loss
+#         return accumulated_loss
+#     return loss
 
 # --------------------------------------------- LSTM Model  ------------------------------------------------------
 
@@ -156,7 +158,7 @@ class Model:
                 A dictionary containing the hyperparameters
         """
         # --------- create model ---------
-        model = tf.keras.Sequential(name='BlackBoxLSTM')
+        model = tf.keras.Sequential(name='Black_Box_LSTM')
         # layer 1
         model.add(layers.LSTM(units=params['n_lstm_units_1'], input_shape=(params['n_steps'], params['n_features']), return_sequences=True))
         model.add(layers.LeakyReLU(alpha=params['alpha_1']))
@@ -167,10 +169,8 @@ class Model:
         model.add(layers.Dense(1, activation=params['activation_output_layer']))
         model.summary()
         
-        # --------- compile model ---------
-        custom_loss = combine_losses(params)
-        
-        model.compile(run_eagerly=True, optimizer=params['optimizer'], loss=custom_loss, metrics=['mse', params['metric']])
+        # --------- compile model ---------        
+        model.compile(run_eagerly=True, optimizer=params['optimizer'], loss='mse', metrics=['mse', params['metric']])
         
         # save model parameters
         self.model = model
@@ -292,36 +292,40 @@ class Model:
           ['MAE (V)', round(train_mae, 4), round(validation_mae, 4), round(test_mae, 4)], 
           ['MaxE (V)', round(train_max, 4), round(validation_max, 4), round(test_max, 4)]], headers=['Training', 'Validation', 'Test'])
         print(error_table)
-        print('###########################################################')
+        print('###########################################################')        
         
-        fig,_ = plt.subplots(figsize=(14,10))
+        fig, _ = plt.subplots(figsize=(14,10))
         plt.subplot(2,2,1)
         time_val = np.arange(yhat_validation_unscaled.shape[0]) * 0.25
-        plt.plot(time_val, yhat_validation_unscaled, color='red', label='predicted')
-        plt.plot(time_val, y_validation_unscaled, color='blue', label='measured')
-        plt.ylabel('voltage (V)')
-        plt.title('Validation Data')
+        plt.plot(time_val, yhat_validation_unscaled, color='blue', label='predicted')
+        plt.plot(time_val, y_validation_unscaled, color='g', dashes=[2, 2], label='measured')
+        plt.fill_between(time_val, yhat_validation_unscaled.flatten(), y_validation_unscaled.flatten(), label='delta', color='lightgrey')
+        plt.ylabel('voltage (V)', fontsize=20)
+        plt.title('Reproduction', fontsize=20)
         plt.legend()
-        plt.subplot(2,2,3)
+        axe = plt.subplot(2,2,3)
         delta_val = np.abs(yhat_validation_unscaled - y_validation_unscaled)
-        plt.plot(time_val, delta_val, color='m', label='predicted - measured')
-        plt.ylabel('voltage (V)')
-        plt.xlabel('time (s)')
-        plt.title('Absolute Error')
+        plt.bar(time_val, delta_val.flatten() * 100, width=2, label='delta', color='lightgrey')   
+        axe.set_ylim([0,3])
+        plt.ylabel('voltage (mV)', fontsize=20)
+        plt.xlabel('time (s)', fontsize=20)
+        plt.title('Absolute Error', fontsize=20)
         plt.legend()
         plt.subplot(2,2,2)
         time_test = np.arange(yhat_test_unscaled.shape[0]) * 0.25
-        plt.plot(time_test, yhat_test_unscaled, color='red', label='predicted')
-        plt.plot(time_test, y_test_unscaled, color='blue', label='measured')
-        plt.ylabel('voltage (V)')
-        plt.title('Test Data')
+        plt.plot(time_test, yhat_test_unscaled, color='blue', label='predicted')
+        plt.plot(time_test, y_test_unscaled, color='g', dashes=[2, 2], label='measured')
+        plt.fill_between(time_test, yhat_test_unscaled.flatten(), y_test_unscaled.flatten(), label='delta', color='lightgrey')
+        plt.ylabel('voltage (V)', fontsize=20)
+        plt.title('Reproduction', fontsize=20)
         plt.legend()
-        plt.subplot(2,2,4)
+        axe = plt.subplot(2,2,4)
         delta_test = np.abs(yhat_test_unscaled - y_test_unscaled)
-        plt.plot(time_test, delta_test, color='m', label='predicted - measured')
-        plt.ylabel('voltage (V)')
-        plt.xlabel('time (s)')
-        plt.title('Absolute Error')
+        plt.bar(time_test, delta_test.flatten() * 100, width=2, label='delta', color='lightgrey')           
+        axe.set_ylim([0,3])
+        plt.ylabel('voltage (mV)', fontsize=20)
+        plt.xlabel('time (s)', fontsize=20)
+        plt.title('Absolute Error', fontsize=20)
         plt.legend()
         plt.show()
         
@@ -378,28 +382,31 @@ class Model:
         print(error_table)
         print('##############################################################')
         
-        fig,_ = plt.subplots(figsize=(7,16))
-        plt.subplot(3,1,1)
+        fig,_ = plt.subplots(figsize=(20,5))
+        plt.subplot(1,3,1)
         time_case_1 = np.arange(yhat_case_1_unscaled.shape[0]) * 0.25
-        plt.plot(time_case_1, yhat_case_1_unscaled, color='red', label='predicted')
-        plt.plot(time_case_1, y_case_1_unscaled, color='blue', label='measured')
-        plt.ylabel('voltage (V)')
-        plt.title('Use Case 1')
+        plt.plot(time_case_1, yhat_case_1_unscaled, color='blue', label='predicted')
+        plt.plot(time_case_1, y_case_1_unscaled, color='g', dashes=[2, 2], label='measured')
+        plt.fill_between(time_case_1, yhat_case_1_unscaled.flatten(), y_case_1_unscaled.flatten(), label='delta', color='lightgrey')
+        plt.ylabel('voltage (V)', fontsize=20)
+        plt.xlabel('time (s)', fontsize=20)
+        plt.title('Reproduction', fontsize=20)
         plt.legend()
-        plt.subplot(3,1,2)
+        plt.subplot(1,3,2)
         time_case_2 = np.arange(yhat_case_2_unscaled.shape[0]) * 0.25
-        plt.plot(time_case_2, yhat_case_2_unscaled, color='red', label='predicted')
-        plt.plot(time_case_2, y_case_2_unscaled, color='blue', label='measured')
-        plt.ylabel('voltage (V)')
-        plt.title('Use Case 2')
+        plt.plot(time_case_2, yhat_case_2_unscaled, color='blue', label='predicted')
+        plt.plot(time_case_2, y_case_2_unscaled, color='g', dashes=[2, 2], label='measured')
+        plt.fill_between(time_case_2, yhat_case_2_unscaled.flatten(), y_case_2_unscaled.flatten(), label='delta', color='lightgrey')
+        plt.xlabel('time (s)', fontsize=20)
+        plt.title('Abstraction', fontsize=20)
         plt.legend()
-        plt.subplot(3,1,3)
+        plt.subplot(1,3,3)
         time_case_3 = np.arange(yhat_case_3_unscaled.shape[0]) * 0.25
-        plt.plot(time_case_3, yhat_case_3_unscaled, color='red', label='predicted')
-        plt.plot(time_case_3, y_case_3_unscaled, color='blue', label='measured')
-        plt.ylabel('voltage (V)')
-        plt.ylabel('time (s)')
-        plt.title('Use Case 3')
+        plt.plot(time_case_3, yhat_case_3_unscaled, color='blue', label='predicted')
+        plt.plot(time_case_3, y_case_3_unscaled, color='g', dashes=[2, 2], label='measured')
+        plt.fill_between(time_case_3, yhat_case_3_unscaled.flatten(), y_case_3_unscaled.flatten(), label='delta', color='lightgrey')
+        plt.xlabel('time (s)', fontsize=20)
+        plt.title('Generalization', fontsize=20)
         plt.legend()
         plt.show()
         
