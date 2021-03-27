@@ -7,16 +7,14 @@ import tensorflow as tf
 import matplotlib.pyplot as plt
 import matplotlib.mlab as mlab
 import sklearn.metrics as metrics
-import tensorflow.python.util.deprecation as deprecation
-# used to hide deprecation warning raised by tensorflow
-deprecation._PRINT_DEPRECATION_WARNINGS = False 
-
+tf.get_logger().setLevel('ERROR')
 from tensorflow.keras import layers
 from tensorflow.keras import backend
 from tensorflow.keras import losses
 from tensorflow.keras import callbacks
 from tabulate import tabulate
 from ..data.data_preprocessing import preprocess_raw_data
+from cond_rnn import ConditionalRNN
 
 # ---------------------------------------------------- Callbacks -------------------------------------------------
 class TimeHistory(callbacks.Callback):
@@ -64,94 +62,19 @@ class Model:
             params (dict): 
                 A dictionary containing the hyperparameters
         """
-        # --------- Create Autoencoder for pretraining ------------
-        # create layers
-        inputs = tf.keras.Input(shape=(params['n_steps'], params['n_features']))
+        # --------- create model ---------
+        model = tf.keras.Sequential(layers=[
+            ConditionalRNN(params['n_lstm_units_1'], cell='LSTM'), 
+            layers.Dense(units=1, activation='linear') 
+        ])
+
+        # --------- compile model ---------
+        model.compile(optimizer=params['optimizer'],  loss='mse', metrics=['mse', params['metric']])
         
-        encoded = layers.LSTM(params['n_lstm_units_1'])(inputs)
-        encoded_repeat = layers.RepeatVector(params['n_steps'])(encoded)
-        
-        decoded = layers.LSTM(params['n_features'], return_sequences=True)(encoded_repeat)
-        decoded = layers.Dense(1, activation=params['activation_output_layer'])(decoded)
-
-        # initialize models
-        sequence_autoencoder = tf.keras.Model(inputs, decoded, name='Autoencoder_LSTM')
-        encoder = tf.keras.Model(inputs, encoded_repeat, name='Encoder')
-
-        sequence_autoencoder.summary()
-#         encoder.summary()
-
-        # compile models
-        sequence_autoencoder.compile(run_eagerly=True, optimizer=params['optimizer'], loss='mse', metrics=['mse', params['metric']])
-        encoder.compile(run_eagerly=True, optimizer=params['optimizer'], loss='mse', metrics=['mse', params['metric']])
-
-        # --------- Create LSTM Model ------------
-        lstm_input_timeseries = tf.keras.Input(shape=(params['n_steps'], params['n_features']))
-        lstm_input = encoder(lstm_input_timeseries)
-
-        # define LSTM
-        lstm_layer_1 = layers.LSTM(units=params['n_lstm_units_1'], return_sequences=True)(lstm_input)
-        activation_layer_1 = layers.LeakyReLU(alpha=params['alpha_1'])(lstm_layer_1)
-        
-        lstm_layer_2 = layers.LSTM(units=params['n_lstm_units_2'])(activation_layer_1)
-        activation_layer_2 = layers.LeakyReLU(alpha=params['alpha_2'])(lstm_layer_2)
-        
-        output_layer = layers.Dense(1, activation=params['activation_output_layer'])(activation_layer_2)
-
-        # initialize & compile model
-        model = tf.keras.Model(lstm_input_timeseries, output_layer, name='Pretrained_LSTM')
-        model.summary()
-        model.compile(run_eagerly=True, optimizer=params['optimizer'], loss='mse', metrics=['mse', params['metric']])
-    
         # save model parameters
-        self.sequence_autoencoder = sequence_autoencoder
         self.model = model
         self.params = params
         return None
-
-    def pretrain(self, X, y, scalers):
-        """Trains the LSTM model.
-
-        For visualization purposes, the MSE and MAE over all training epochs will be ploted.
-
-        Args:
-            X (numpy.ndarray): 
-                The input data
-                
-            y (numpy.ndarray): 
-                The groundtruth output data
-            
-            scalers (tuple):
-                The scaler objects which were used to scale X and y
-        Returns:
-            The time_callback which is used to measure the time needed to train the model. In adition the matplotlib 
-            figure used to plot the visualization. This is needed so that the plots can be saved at the appropriate location.
-        """
-        # --------- train model ---------
-        time_callback = TimeHistory()
-        history = self.sequence_autoencoder.fit(X, y, epochs=self.params['n_pretraining_epochs'], callbacks=[time_callback], verbose=1)
-        
-        # --------- visualize results ---------
-        loss = history.history['loss']
-        mse = history.history['mse']
-        mae = history.history['mae']
-        epochs = range(1,len(loss)+1)
-        
-        print('Pretraining time:', str(round(np.sum(time_callback.times), 3)) +'s')
-        
-        fig, _ = plt.subplots(figsize=(8,5))
-        plt.plot(epochs, loss,'-o', color='green', label='training loss')
-        plt.plot(epochs, mse,'-o', color='blue', label='mean squared error')
-        plt.plot(epochs, mae,'-o', color='red',label='mean absolute error')
-        plt.ylabel('loss')
-        plt.xlabel('epochs')
-        plt.legend()
-        plt.show()
-        
-        # save parameters
-        self.history = history
-        self.scalers_train = scalers
-        return time_callback, fig
     
     def train(self, X, y, scalers):
         """Trains the LSTM model.
@@ -173,8 +96,8 @@ class Model:
         """
         # --------- train model ---------
         time_callback = TimeHistory()
-        history = self.model.fit(X, y, epochs=self.params['n_training_epochs'], callbacks=[time_callback], verbose=1)
-        
+        history = self.model.fit(x=X, y=y, epochs=self.params['n_epochs'], callbacks=[time_callback], verbose=1)
+
         # --------- visualize results ---------
         loss = history.history['loss']
         mse = history.history['mse']
@@ -297,7 +220,7 @@ class Model:
         plt.legend()
         axe = plt.subplot(2,2,4)
         delta_test = np.abs(yhat_test_unscaled - y_test_unscaled)
-        plt.bar(time_test, delta_test.flatten(), width=2, label='delta', color='lightgrey')           
+        plt.bar(time_test, delta_test.flatten(), width=2, label='delta', color='lightgrey')
         axe.set_ylim([0,0.03])
         plt.ylabel('voltage (V)', fontsize=20)
         plt.xlabel('time (s)', fontsize=20)
@@ -385,5 +308,4 @@ class Model:
         plt.title('Generalization', fontsize=20)
         plt.legend()
         plt.show()
-        
         

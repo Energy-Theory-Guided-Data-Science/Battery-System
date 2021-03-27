@@ -7,14 +7,17 @@ import tensorflow as tf
 import matplotlib.pyplot as plt
 import matplotlib.mlab as mlab
 import sklearn.metrics as metrics
-tf.get_logger().setLevel('ERROR')
+import tensorflow.python.util.deprecation as deprecation
+# used to hide deprecation warning raised by tensorflow
+deprecation._PRINT_DEPRECATION_WARNINGS = False 
+
 from tensorflow.keras import layers
 from tensorflow.keras import backend
 from tensorflow.keras import losses
 from tensorflow.keras import callbacks
 from tabulate import tabulate
 from ..data.data_preprocessing import preprocess_raw_data
-from cond_rnn import ConditionalRNN
+import src.models.thevenin_model as thevenin
 
 # ---------------------------------------------------- Callbacks -------------------------------------------------
 class TimeHistory(callbacks.Callback):
@@ -33,6 +36,61 @@ class TimeHistory(callbacks.Callback):
 
     def on_predict_end(self, logs={}):
         self.times.append(time.time() - self.epoch_time_start)
+
+# --------------------------------------------- Custom Loss Functions --------------------------------------------
+
+def soc_constraint(inputs, y_true, y_pred, scalers_train):
+    losses = []
+    
+    for i in range(len(y_true)):
+        # SOC_hat
+        z_hat = thevenin.ocv_inverse_exact(
+                    scalers_train.inverse_transform(
+                        np.array([y_true[i]]).reshape(1, -1))[0][0])
+        # SOC label
+        z = thevenin.ocv_inverse_exact(
+                    scalers_train.inverse_transform(
+                        np.array(
+                            [y_pred.numpy()[i][0]]).reshape(1, -1))[0][0])
+        
+        
+        losses.append(backend.square(z_hat - z).numpy()) # TODO create tensor instead of one loss?
+    
+    loss = tf.constant(losses, dtype=tf.float32)
+
+    # to visualize loss during training    
+    print(' - const:', round(np.mean(loss.numpy()), 4))
+    return loss
+
+def combine_losses(params, scalers_train):
+    """Combines multiple custom loss functions.
+
+    The loss functions provided by the 'loss_funcs' key in the params array will be combined in a weighted sum. 
+    Weights are determined by the respective 'lambda_xyz' key. 
+
+    Args:
+        params (dict): 
+            A dictionary containing the hyperparameters
+    Returns: 
+        The combined loss value.
+    """
+    # wrapper function needed for the custom loss function to be accepted from keras
+    def loss(data, y_pred):
+        y_true = data[:,0]
+        y_true = np.reshape(y_true, (-1, 1))
+        inputs = data[:,1]
+            
+        accumulated_loss = 0
+        loss_functions = params['loss_funcs']
+
+        # add custom loss function here 
+        if 'mse' in loss_functions:
+            accumulated_loss += params['lambda_mse'] * losses.mean_squared_error(y_true, y_pred)
+        if 'soc' in loss_functions:
+            accumulated_loss += params['lambda_soc'] * soc_constraint(inputs, y_true, y_pred, scalers_train)
+            
+        return accumulated_loss
+    return loss
 
 # --------------------------------------------- LSTM Model  ------------------------------------------------------
 
@@ -53,7 +111,7 @@ class Model:
             A report of the training procedure
     """
    
-    def initialize(self, params):
+    def initialize(self, params, scalers_train):
         """Initializes the LSTM model.
 
         For visualization purposes, a summary of the model will be printed.
@@ -63,13 +121,21 @@ class Model:
                 A dictionary containing the hyperparameters
         """
         # --------- create model ---------
-        model = tf.keras.Sequential(layers=[
-            ConditionalRNN(params['n_lstm_units_1'], cell='LSTM'), 
-            layers.Dense(units=1, activation='linear') 
-        ])
-
+        model = tf.keras.Sequential(name='Black_Box_LSTM')
+        # layer 1
+#         model.add(layers.LSTM(units=params['n_lstm_units_1'], batch_input_shape=(32, params['n_steps'], params['n_features']), stateful=True, return_sequences=True))
+        model.add(layers.LSTM(units=params['n_lstm_units_1'], input_shape=(params['n_steps'], params['n_features']), return_sequences=True))
+        model.add(layers.LeakyReLU(alpha=params['alpha_1'])) # (profiles, None, 3)
+        # layer 2
+        model.add(layers.LSTM(units=params['n_lstm_units_2']))
+        model.add(layers.LeakyReLU(alpha=params['alpha_1']))
+        # output layer
+        model.add(layers.Dense(1, activation=params['activation_output_layer']))
+    
         # --------- compile model ---------
-        model.compile(optimizer=params['optimizer'],  loss='mse', metrics=['mse', params['metric']])
+        custom_loss = combine_losses(params, scalers_train)
+        
+        model.compile(run_eagerly=True, optimizer=params['optimizer'], loss=custom_loss, metrics=['mse', params['metric']])
         
         # save model parameters
         self.model = model
@@ -96,8 +162,8 @@ class Model:
         """
         # --------- train model ---------
         time_callback = TimeHistory()
-        history = self.model.fit(x=X, y=y, epochs=self.params['n_epochs'], callbacks=[time_callback], verbose=1)
-
+        history = self.model.fit(X, y, epochs=self.params['n_epochs'], callbacks=[time_callback], verbose=1)
+        
         # --------- visualize results ---------
         loss = history.history['loss']
         mse = history.history['mse']
@@ -157,19 +223,19 @@ class Model:
         time_train = TimeHistory()
         yhat_train = self.model.predict(X_train, callbacks=[time_train], verbose=1)
         yhat_train_unscaled = scalers_train.inverse_transform(yhat_train)
-        y_train_unscaled = scalers_train.inverse_transform(y_train)
+        y_train_unscaled = scalers_train.inverse_transform(y_train.reshape(-1, 1))
         print('Prediction time on Training Set: ', str(round(np.sum(time_train.times), 3)) + 's')
         
         time_val = TimeHistory()
         yhat_validation = self.model.predict(X_validation, callbacks=[time_val], verbose=1)
         yhat_validation_unscaled = scalers_train.inverse_transform(yhat_validation)
-        y_validation_unscaled = scalers_train.inverse_transform(y_validation)
+        y_validation_unscaled = scalers_train.inverse_transform(y_validation.reshape(-1, 1))
         print('Prediction time on Validation Set: ', str(round(np.sum(time_val.times), 3)) + 's')
         
         time_test = TimeHistory()
         yhat_test = self.model.predict(X_test, callbacks=[time_test], verbose = 1)
         yhat_test_unscaled = scalers_train.inverse_transform(yhat_test)
-        y_test_unscaled = scalers_train.inverse_transform(y_test)
+        y_test_unscaled = scalers_train.inverse_transform(y_test.reshape(-1, 1))
         print('Prediction time on Test Set: ', str(round(np.sum(time_test.times), 3)) + 's')
 
         # --------- compute error ---------
@@ -191,36 +257,40 @@ class Model:
           ['MAE (V)', round(train_mae, 4), round(validation_mae, 4), round(test_mae, 4)], 
           ['MaxE (V)', round(train_max, 4), round(validation_max, 4), round(test_max, 4)]], headers=['Training', 'Validation', 'Test'])
         print(error_table)
-        print('###########################################################')
+        print('###########################################################')        
         
-        fig,_ = plt.subplots(figsize=(14,10))
+        fig, _ = plt.subplots(figsize=(14,10))
         plt.subplot(2,2,1)
         time_val = np.arange(yhat_validation_unscaled.shape[0]) * 0.25
-        plt.plot(time_val, yhat_validation_unscaled, color='red', label='predicted')
-        plt.plot(time_val, y_validation_unscaled, color='blue', label='measured')
-        plt.ylabel('voltage (V)')
-        plt.title('Validation Data')
+        plt.plot(time_val, yhat_validation_unscaled, color='blue', label='predicted')
+        plt.plot(time_val, y_validation_unscaled, color='g', dashes=[2, 2], label='measured')
+        plt.fill_between(time_val, yhat_validation_unscaled.flatten(), y_validation_unscaled.flatten(), label='delta', color='lightgrey')
+        plt.ylabel('voltage (V)', fontsize=20)
+        plt.title('Validation Data', fontsize=20)
         plt.legend()
-        plt.subplot(2,2,3)
+        axe = plt.subplot(2,2,3)
         delta_val = np.abs(yhat_validation_unscaled - y_validation_unscaled)
-        plt.plot(time_val, delta_val, color='m', label='predicted - measured')
-        plt.ylabel('voltage (V)')
-        plt.xlabel('time (s)')
-        plt.title('Absolute Error')
+        plt.bar(time_val, delta_val.flatten(), width=2, label='delta', color='lightgrey')   
+        axe.set_ylim([0,0.03])
+        plt.ylabel('voltage (V)', fontsize=20)
+        plt.xlabel('time (s)', fontsize=20)
+        plt.title('Absolute Error', fontsize=20)
         plt.legend()
         plt.subplot(2,2,2)
         time_test = np.arange(yhat_test_unscaled.shape[0]) * 0.25
-        plt.plot(time_test, yhat_test_unscaled, color='red', label='predicted')
-        plt.plot(time_test, y_test_unscaled, color='blue', label='measured')
-        plt.ylabel('voltage (V)')
-        plt.title('Test Data')
+        plt.plot(time_test, yhat_test_unscaled, color='blue', label='predicted')
+        plt.plot(time_test, y_test_unscaled, color='g', dashes=[2, 2], label='measured')
+        plt.fill_between(time_test, yhat_test_unscaled.flatten(), y_test_unscaled.flatten(), label='delta', color='lightgrey')
+        plt.ylabel('voltage (V)', fontsize=20)
+        plt.title('Test Data', fontsize=20)
         plt.legend()
-        plt.subplot(2,2,4)
+        axe = plt.subplot(2,2,4)
         delta_test = np.abs(yhat_test_unscaled - y_test_unscaled)
-        plt.plot(time_test, delta_test, color='m', label='predicted - measured')
-        plt.ylabel('voltage (V)')
-        plt.xlabel('time (s)')
-        plt.title('Absolute Error')
+        plt.bar(time_test, delta_test.flatten(), width=2, label='delta', color='lightgrey')           
+        axe.set_ylim([0,0.03])
+        plt.ylabel('voltage (V)', fontsize=20)
+        plt.xlabel('time (s)', fontsize=20)
+        plt.title('Absolute Error', fontsize=20)
         plt.legend()
         plt.show()
         
@@ -232,25 +302,25 @@ class Model:
         time_train = TimeHistory()
         yhat_train = self.model.predict(X_train, callbacks=[time_train], verbose=1)
         yhat_train_unscaled = scalers_train.inverse_transform(yhat_train)
-        y_train_unscaled = scalers_train.inverse_transform(y_train)
+        y_train_unscaled = scalers_train.inverse_transform(y_train.reshape(-1, 1))
         print('Prediction time on Training Set: ', str(round(np.sum(time_train.times), 3)) + 's')
         
         time_case_1 = TimeHistory()
         yhat_case_1 = self.model.predict(X_case_1, callbacks=[time_case_1], verbose=1)
         yhat_case_1_unscaled = scalers_train.inverse_transform(yhat_case_1)
-        y_case_1_unscaled = scalers_train.inverse_transform(y_case_1)
+        y_case_1_unscaled = scalers_train.inverse_transform(y_case_1.reshape(-1, 1))
         print('Prediction time on Use Case 1: ', str(round(np.sum(time_case_1.times), 3)) + 's')
         
         time_case_2 = TimeHistory()
         yhat_case_2 = self.model.predict(X_case_2, callbacks=[time_case_2], verbose=1)
         yhat_case_2_unscaled = scalers_train.inverse_transform(yhat_case_2)
-        y_case_2_unscaled = scalers_train.inverse_transform(y_case_2)
+        y_case_2_unscaled = scalers_train.inverse_transform(y_case_2.reshape(-1, 1))
         print('Prediction time on Use Case 2: ', str(round(np.sum(time_case_2.times), 3)) + 's')
 
         time_case_3 = TimeHistory()
         yhat_case_3 = self.model.predict(X_case_3, callbacks=[time_case_3], verbose=1)
         yhat_case_3_unscaled = scalers_train.inverse_transform(yhat_case_3)
-        y_case_3_unscaled = scalers_train.inverse_transform(y_case_3)
+        y_case_3_unscaled = scalers_train.inverse_transform(y_case_3.reshape(-1, 1))
         print('Prediction time on Use Case 3: ', str(round(np.sum(time_case_3.times), 3)) + 's')
 
         # --------- compute error ---------
@@ -277,28 +347,31 @@ class Model:
         print(error_table)
         print('##############################################################')
         
-        fig,_ = plt.subplots(figsize=(7,16))
-        plt.subplot(3,1,1)
+        fig,_ = plt.subplots(figsize=(20,5))
+        plt.subplot(1,3,1)
         time_case_1 = np.arange(yhat_case_1_unscaled.shape[0]) * 0.25
-        plt.plot(time_case_1, yhat_case_1_unscaled, color='red', label='predicted')
-        plt.plot(time_case_1, y_case_1_unscaled, color='blue', label='measured')
-        plt.ylabel('voltage (V)')
-        plt.title('Use Case 1')
+        plt.plot(time_case_1, yhat_case_1_unscaled, color='blue', label='predicted')
+        plt.plot(time_case_1, y_case_1_unscaled, color='g', dashes=[2, 2], label='measured')
+        plt.fill_between(time_case_1, yhat_case_1_unscaled.flatten(), y_case_1_unscaled.flatten(), label='delta', color='lightgrey')
+        plt.ylabel('voltage (V)', fontsize=20)
+        plt.xlabel('time (s)', fontsize=20)
+        plt.title('Reproduction', fontsize=20)
         plt.legend()
-        plt.subplot(3,1,2)
+        plt.subplot(1,3,2)
         time_case_2 = np.arange(yhat_case_2_unscaled.shape[0]) * 0.25
-        plt.plot(time_case_2, yhat_case_2_unscaled, color='red', label='predicted')
-        plt.plot(time_case_2, y_case_2_unscaled, color='blue', label='measured')
-        plt.ylabel('voltage (V)')
-        plt.title('Use Case 2')
+        plt.plot(time_case_2, yhat_case_2_unscaled, color='blue', label='predicted')
+        plt.plot(time_case_2, y_case_2_unscaled, color='g', dashes=[2, 2], label='measured')
+        plt.fill_between(time_case_2, yhat_case_2_unscaled.flatten(), y_case_2_unscaled.flatten(), label='delta', color='lightgrey')
+        plt.xlabel('time (s)', fontsize=20)
+        plt.title('Abstraction', fontsize=20)
         plt.legend()
-        plt.subplot(3,1,3)
+        plt.subplot(1,3,3)
         time_case_3 = np.arange(yhat_case_3_unscaled.shape[0]) * 0.25
-        plt.plot(time_case_3, yhat_case_3_unscaled, color='red', label='predicted')
-        plt.plot(time_case_3, y_case_3_unscaled, color='blue', label='measured')
-        plt.ylabel('voltage (V)')
-        plt.ylabel('time (s)')
-        plt.title('Use Case 3')
+        plt.plot(time_case_3, yhat_case_3_unscaled, color='blue', label='predicted')
+        plt.plot(time_case_3, y_case_3_unscaled, color='g', dashes=[2, 2], label='measured')
+        plt.fill_between(time_case_3, yhat_case_3_unscaled.flatten(), y_case_3_unscaled.flatten(), label='delta', color='lightgrey')
+        plt.xlabel('time (s)', fontsize=20)
+        plt.title('Generalization', fontsize=20)
         plt.legend()
         plt.show()
         
