@@ -20,10 +20,10 @@ def cut_profile(sequence, cutoff_time):
 
 def load_profile(profile, params, cutoff_time = sys.maxsize, visualize = False):
     # ------------- load voltage -------------
-    train_voltage_data = np.loadtxt('../../../data/raw/fobss_data/data/' + profile + '/cells/Slave_0_Cell_Voltages.csv', delimiter=';')
-    train_voltage_data = train_voltage_data[::params['sampling_rate']]
+    train_voltage_data = np.loadtxt('../../../data/raw/fobss_data/data/' + profile + '/cells/Slave_' + str(params['stack']) + '_Cell_Voltages.csv', delimiter=';')
+    train_voltage_data = train_voltage_data[::params['d_sample']]
 
-    train_voltage_profile = train_voltage_data[:,params['battery_cell']]
+    train_voltage_profile = train_voltage_data[:,params['cell']]
     train_voltage_profile = util.smooth(train_voltage_profile, params['gauss_sigma'])
 
     train_voltage_time = train_voltage_data[:,0]
@@ -37,7 +37,7 @@ def load_profile(profile, params, cutoff_time = sys.maxsize, visualize = False):
 
     # ------------- load current -------------
     train_current_data = np.loadtxt('../../../data/raw/fobss_data/data/' + profile + '/battery/Battery_Current.csv', delimiter=';')
-    train_current_data = train_current_data[::params['sampling_rate']]
+    train_current_data = train_current_data[::params['d_sample']]
     train_current_data[:,1] = -train_current_data[:,1]
 
     train_current_profile = train_current_data[:,1]
@@ -75,6 +75,8 @@ def load_profile(profile, params, cutoff_time = sys.maxsize, visualize = False):
         plt.subplot(2,2,4)  
         plt.plot(train_current_time, cur_grad, color='green')
         plt.title('Current Gradient')
+        plt.xlabel('time (s)', fontsize=20)
+        plt.ylabel('voltage (V)', fontsize=20)
         plt.show()
     
     return train_current, train_voltage
@@ -178,7 +180,9 @@ def identify_instant_volt_change(train_current, train_voltage):
     plt.plot(train_voltage_time, train_voltage_profile)
     plt.hlines(train_voltage_profile[low_index_volt], train_voltage[low_index_volt,0], train_voltage[-1,0], color='red', linestyles='dashed')
     plt.hlines(train_voltage_profile[high_index_volt], train_voltage[high_index_volt,0], train_voltage[-1,0], color='red', linestyles='dashed')
-    plt.title('Instantanous Voltage Change')
+    plt.title('Instantanous Voltage Change', fontsize=20)
+    plt.xlabel('time (s)', fontsize=20)
+    plt.ylabel('voltage (V)', fontsize=20)
     plt.show()
     
     return r_0, delta_i, max_volt_change_index
@@ -264,7 +268,9 @@ def identify_steady_state_voltage_change(train_current, train_voltage, r_0, delt
     plt.plot(train_voltage_time, train_voltage_profile)
     plt.hlines(train_voltage_profile[max_voltage_index], train_voltage[max_voltage_index,0],  train_voltage[-1,0], color='red', linestyles='dashed')
     plt.hlines(train_voltage_profile[steady_state_index], train_voltage[max_decrease_index,0],  train_voltage[-1,0], color='red', linestyles='dashed')
-    plt.title('Steady State Voltage Change')
+    plt.title('Steady State Voltage Change', fontsize=20)
+    plt.xlabel('time (s)', fontsize=20)
+    plt.ylabel('voltage (V)', fontsize=20)
     plt.show()
     
     return r_1, max_decrease_index, steady_state_time, max_voltage_index, steady_state_index
@@ -310,7 +316,9 @@ def identify_steady_state_time(train_current, train_voltage, r_1, max_decrease_i
     plt.plot(train_voltage_time, train_voltage_profile)
     plt.vlines(train_voltage[max_voltage_index,0], upper_y, lower_y, color='red', linestyles='dashed')
     plt.vlines(train_voltage[steady_state_index,0], upper_y, lower_y, color='red', linestyles='dashed')
-    plt.title('Time to Steady State')
+    plt.title('Time to Steady State', fontsize=20)
+    plt.xlabel('time (s)', fontsize=20)
+    plt.ylabel('voltage (V)', fontsize=20)
     plt.show()
     
     return c_1
@@ -409,27 +417,29 @@ def plot_SOC_curves(profile, params):
     soc_curve_exact_lin = np.array(soc_curve_exact_lin)
     soc_curve_simple = np.array(soc_curve_simple)
 
-    fig,_ = plt.subplots(figsize=(10,8))
-    plt.subplot(3,3,1)
-    plt.plot(ocv_curve_simple[:,0], ocv_curve_simple[:,1])
-    plt.ylabel('OCV')
-    plt.title('linear')
-    plt.subplot(3,3,2)  
-    plt.plot(ocv_curve_exact[:,0], ocv_curve_exact[:,1])
-    plt.title('73 values')
-    plt.subplot(3,3,3)  
+    fig,_ = plt.subplots(figsize=(7,5))
+#     plt.subplot(3,3,1)
+#     plt.plot(ocv_curve_simple[:,0], ocv_curve_simple[:,1])
+#     plt.ylabel('OCV')
+#     plt.title('linear')
+#     plt.subplot(3,3,2)  
+#     plt.plot(ocv_curve_exact[:,0], ocv_curve_exact[:,1])
+#     plt.title('73 values')
+#     plt.subplot(3,3,3)  
     plt.plot(ocv_curve_exact_lin[:,0], ocv_curve_exact_lin[:,1])
-    plt.title('73 values (interpolated)')
-    plt.subplot(3,3,4)  
-    plt.plot(soc_curve_simple[:,0], soc_curve_simple[:,1])
-    plt.ylabel('SOC')
-    plt.xlabel('OCV')
-    plt.subplot(3,3,5)  
-    plt.plot(soc_curve_exact[:,0], soc_curve_exact[:,1])
-    plt.xlabel('OCV')
-    plt.subplot(3,3,6)  
-    plt.plot(soc_curve_exact[:,0], soc_curve_exact_lin[:,1])
-    plt.xlabel('OCV')
+    plt.title('SOC - OCV relationship', fontsize=20)
+    plt.xlabel('SOC (%)', fontsize=20)
+    plt.ylabel('OCV (V)', fontsize=20)
+#     plt.subplot(3,3,4)  
+#     plt.plot(soc_curve_simple[:,0], soc_curve_simple[:,1])
+#     plt.ylabel('SOC')
+#     plt.xlabel('OCV')
+#     plt.subplot(3,3,5)  
+#     plt.plot(soc_curve_exact[:,0], soc_curve_exact[:,1])
+#     plt.xlabel('OCV')
+#     plt.subplot(3,3,6)  
+#     plt.plot(soc_curve_exact[:,0], soc_curve_exact_lin[:,1])
+#     plt.xlabel('OCV')
     plt.show()
 
 def get_SOC_values(profile, params):
@@ -524,7 +534,7 @@ def vis_predict(profile, r_0, r_1, c_1, params):
 
     for i in range(test_current_profile.shape[0]):
         if (i == 0):
-            d_t = 0.25 * params['sampling_rate']
+            d_t = 0.25 * params['d_sample']
         else:
             d_t = test_current_time[i] - test_current_time[i-1]
 
@@ -539,17 +549,19 @@ def vis_predict(profile, r_0, r_1, c_1, params):
     # ------------- print results -------------
     fig, _ = plt.subplots(figsize=(7,10))
     plt.subplot(2,1,1)
-    plt.plot(test_voltage_time, test_voltage_profile, label='measured', color='blue')
-    plt.plot(test_voltage_time, v, label='predicted', color='red')
-    plt.ylabel('voltage (V)')
-    plt.title('Test Data')
+    plt.plot(test_voltage_time, test_voltage_profile, label='measured',  color='g', dashes=[2, 2])
+    plt.plot(test_voltage_time, v, label='predicted', color='blue')
+    plt.fill_between(test_voltage_time, test_voltage_profile, v, label='delta', color='lightgrey')
+    plt.title('Test Data', fontsize=20)
+    plt.ylabel('voltage (V)', fontsize=20)
     plt.legend()
-    # plt.subplot(2,1,2)
-    # plt.plot(test_voltage_time, delta, color='m', label='predicted - measured')
-    # plt.ylabel('voltage (V)')
-    # plt.xlabel('time (s)')
-    # plt.title('Absolute Error')
-    # plt.legend()
+    axe = plt.subplot(2,1,2)
+    plt.bar(test_voltage_time, delta * 100, width=2, label='delta', color='lightgrey')   
+    axe.set_ylim([0,0.3])
+    plt.ylabel('voltage (mV)', fontsize=20)
+    plt.xlabel('time (s)', fontsize=20)
+    plt.title('Absolute Error', fontsize=20)
+    plt.legend()
     plt.show()
 
     print('------------------- Evaluation -------------------')
@@ -582,7 +594,7 @@ def predict(profile, r_0, r_1, c_1, params):
 
     for i in range(test_current_profile.shape[0]):
         if (i == 0):
-            d_t = 0.25 * params['sampling_rate']
+            d_t = 0.25 * params['d_sample']
         else:
             d_t = test_current_time[i] - test_current_time[i-1]
 
@@ -629,7 +641,7 @@ def vis_predict_usecases(profiles, r_0, r_1, c_1, params):
 
         for i in range(test_current_profile.shape[0]):
             if (i == 0):
-                d_t = 0.25 * params['sampling_rate']
+                d_t = 0.25 * params['d_sample']
             else:
                 d_t = test_current_time[i] - test_current_time[i-1]
 
@@ -667,32 +679,34 @@ def vis_predict_usecases(profiles, r_0, r_1, c_1, params):
     print(error_table)
     print('##############################################################')
 
-    fig,_ = plt.subplots(figsize=(7,16))
-    plt.subplot(3,1,1)
-    plt.plot(test_voltage_times[1], v_hats[1], color='red', label='predicted')
-    plt.plot(test_voltage_times[1], test_voltage_profiles[1], color='blue', label='measured')
-    plt.ylabel('voltage (V)')
-    plt.title('Use Case 1')
+    fig,_ = plt.subplots(figsize=(20,5))
+    plt.subplot(1,3,1)
+    plt.plot(test_voltage_times[1], v_hats[1], color='blue', label='predicted')
+    plt.plot(test_voltage_times[1], test_voltage_profiles[1], color='g', dashes=[2, 2], label='measured')
+    plt.fill_between(test_voltage_times[1], v_hats[1], test_voltage_profiles[1], label='delta', color='lightgrey')
+    plt.ylabel('voltage (V)', fontsize=20)
+    plt.xlabel('time (s)', fontsize=20)
+    plt.title('Reproduction', fontsize=20)
     plt.legend()
-    plt.subplot(3,1,2)
-    plt.plot(test_voltage_times[2], v_hats[2], color='red', label='predicted')
-    plt.plot(test_voltage_times[2], test_voltage_profiles[2], color='blue', label='measured')
-    plt.ylabel('voltage (V)')
-    plt.title('Use Case 2')
+    plt.subplot(1,3,2)
+    plt.plot(test_voltage_times[2], v_hats[2], color='blue', label='predicted')
+    plt.plot(test_voltage_times[2], test_voltage_profiles[2], color='g', dashes=[2, 2], label='measured')
+    plt.fill_between(test_voltage_times[2], v_hats[2], test_voltage_profiles[2], label='delta', color='lightgrey')
+    plt.xlabel('time (s)', fontsize=20)
+    plt.title('Abstraction', fontsize=20)
     plt.legend()
-    plt.subplot(3,1,3)
-    plt.plot(test_voltage_times[3], v_hats[3], color='red', label='predicted')
-    plt.plot(test_voltage_times[3], test_voltage_profiles[3], color='blue', label='measured')
-    plt.ylabel('voltage (V)')
-    plt.ylabel('time (s)')
-    plt.title('Use Case 3')
+    plt.subplot(1,3,3)
+    plt.plot(test_voltage_times[3], v_hats[3], color='blue', label='predicted')
+    plt.plot(test_voltage_times[3], test_voltage_profiles[3], color='g', dashes=[2, 2], label='measured')
+    plt.fill_between(test_voltage_times[3], v_hats[3], test_voltage_profiles[3], label='delta', color='lightgrey')
+    plt.xlabel('time (s)', fontsize=20)
+    plt.title('Generalization', fontsize=20)
     plt.legend()
     plt.show()
     
+    # save plots and predicted sequences
+    MODEL_ID = str(np.random.randint(10000))
+    print('Saved plot to:', '../../../reports/figures/theory_baseline-' + str(MODEL_ID) + '-' + profile + '-test_profile.png')
+    fig.savefig('../../../reports/figures/theory_baseline-' + str(MODEL_ID) + '-' + profile + '-test_profile.png')
     return v
-#     # save plots and predicted sequences
-#     MODEL_ID = str(np.random.randint(10000))
-#     print('Saved plot to:', '../../../reports/figures/theory_baseline-' + str(MODEL_ID) + '-' + profile + '-test_profile.png')
-#     fig.savefig('../../../reports/figures/theory_baseline-' + str(MODEL_ID) + '-' + profile + '-test_profile.png')
-#     return v
 
