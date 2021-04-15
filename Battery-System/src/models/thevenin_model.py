@@ -503,6 +503,7 @@ class v_wrapper:
     def v_k(self, i_k, delta_t, z_1, v_1, z_2, v_2, ocv_curve_exact_lin):
         z_t = self.z_class.z(i_k, delta_t)
         ocv = ocv_simple(z_t, z_1, v_1, z_2, v_2, ocv_curve_exact_lin)
+        # ocv = ocv_exact_lin(z_t, z_1, v_1, z_2, v_2, ocv_curve_exact_lin)
         i_r1_k = self.i_r1_class.i_r1(i_k, delta_t)
         return ocv - self.r_1 * i_r1_k - self.r_0 * i_k
     
@@ -656,49 +657,57 @@ def vis_predict_usecases(profiles, r_0, r_1, c_1, params):
 
     
     # --------- compute error ---------
-    train_mse = metrics.mean_squared_error(v_hats[0], test_voltage_profiles[0])
-    case_1_mse = metrics.mean_squared_error(v_hats[1], test_voltage_profiles[1])
-    case_2_mse = metrics.mean_squared_error(v_hats[2], test_voltage_profiles[2])
-    case_3_mse = metrics.mean_squared_error(v_hats[3], test_voltage_profiles[3])
+    case_1_mse_list = list()
+    case_1_mae_list = list()
+    case_1_max_list = list()
+    profile_len = list()
+    
+    for i in range(len(profiles)-2):
+        profile_len.append(len(v_hats[i]))
+        case_1_mse_list.append(metrics.mean_squared_error(v_hats[i], test_voltage_profiles[i]))
+        case_1_mae_list.append(metrics.mean_absolute_error(v_hats[i], test_voltage_profiles[i]))
+        case_1_max_list.append(metrics.max_error(v_hats[i], test_voltage_profiles[i]))
 
-    train_mae = metrics.mean_absolute_error(v_hats[0], test_voltage_profiles[0])
-    case_1_mae = metrics.mean_absolute_error(v_hats[1], test_voltage_profiles[1])
-    case_2_mae = metrics.mean_absolute_error(v_hats[2], test_voltage_profiles[2])
-    case_3_mae = metrics.mean_absolute_error(v_hats[3], test_voltage_profiles[3])
+    case_1_mse = np.mean(case_1_mse_list)
+    case_2_mse = metrics.mean_squared_error(v_hats[-2], test_voltage_profiles[-2])
+    case_3_mse = metrics.mean_squared_error(v_hats[-1], test_voltage_profiles[-1])
 
-    train_max = metrics.max_error(v_hats[0], test_voltage_profiles[0])
-    case_1_max = metrics.max_error(v_hats[1], test_voltage_profiles[1])
-    case_2_max = metrics.max_error(v_hats[2], test_voltage_profiles[2])
-    case_3_max = metrics.max_error(v_hats[3], test_voltage_profiles[3])
+    case_1_mae = np.mean(case_1_mae_list)
+    case_2_mae = metrics.mean_absolute_error(v_hats[-2], test_voltage_profiles[-2])
+    case_3_mae = metrics.mean_absolute_error(v_hats[-1], test_voltage_profiles[-1])
+
+    case_1_max = np.mean(case_1_max_list)
+    case_2_max = metrics.max_error(v_hats[-2], test_voltage_profiles[-2])
+    case_3_max = metrics.max_error(v_hats[-1], test_voltage_profiles[-1])
 
     # --------- visualize results ---------
     print('##############################################################')
-    error_table = tabulate([['MSE (\u03BCV)', round(train_mse, 7) * 1000000, round(case_1_mse, 7) * 1000000, round(case_2_mse, 7) * 1000000, round(case_3_mse, 7) * 1000000], 
-      ['MAE (V)', round(train_mae, 4), round(case_1_mae, 4), round(case_2_mae, 4), round(case_3_mae, 4)], 
-      ['MaxE (V)', round(train_max, 4), round(case_1_max, 4), round(case_2_max, 4), round(case_3_max, 4)]], headers=['Training', 'Use Case 1', 'Use Case 2', 'Use Case 3'])
+    error_table = tabulate([['MSE (\u03BCV)', round(case_1_mse, 7) * 1000000, round(case_2_mse, 7) * 1000000, round(case_3_mse, 7) * 1000000], 
+      ['MAE (V)', round(case_1_mae, 4), round(case_2_mae, 4), round(case_3_mae, 4)], 
+      ['MaxE (V)', round(case_1_max, 4), round(case_2_max, 4), round(case_3_max, 4)]], headers=['Use Case 1', 'Use Case 2', 'Use Case 3'])
     print(error_table)
     print('##############################################################')
 
     fig,_ = plt.subplots(figsize=(20,5))
     plt.subplot(1,3,1)
-    plt.plot(test_voltage_times[1], v_hats[1], color='blue', label='predicted')
-    plt.plot(test_voltage_times[1], test_voltage_profiles[1], color='g', dashes=[2, 2], label='measured')
-    plt.fill_between(test_voltage_times[1], v_hats[1], test_voltage_profiles[1], label='delta', color='lightgrey')
+    plt.plot(test_voltage_times[0], v_hats[0], color='blue', label='predicted')
+    plt.plot(test_voltage_times[0], test_voltage_profiles[0], color='g', dashes=[2, 2], label='measured')
+    plt.fill_between(test_voltage_times[0], v_hats[0], test_voltage_profiles[0], label='delta', color='lightgrey')
     plt.ylabel('voltage (V)', fontsize=20)
     plt.xlabel('time (s)', fontsize=20)
     plt.title('Reproduction', fontsize=20)
     plt.legend()
     plt.subplot(1,3,2)
-    plt.plot(test_voltage_times[2], v_hats[2], color='blue', label='predicted')
-    plt.plot(test_voltage_times[2], test_voltage_profiles[2], color='g', dashes=[2, 2], label='measured')
-    plt.fill_between(test_voltage_times[2], v_hats[2], test_voltage_profiles[2], label='delta', color='lightgrey')
+    plt.plot(test_voltage_times[-2], v_hats[-2], color='blue', label='predicted')
+    plt.plot(test_voltage_times[-2], test_voltage_profiles[-2], color='g', dashes=[2, 2], label='measured')
+    plt.fill_between(test_voltage_times[-2], v_hats[-2], test_voltage_profiles[-2], label='delta', color='lightgrey')
     plt.xlabel('time (s)', fontsize=20)
     plt.title('Abstraction', fontsize=20)
     plt.legend()
     plt.subplot(1,3,3)
-    plt.plot(test_voltage_times[3], v_hats[3], color='blue', label='predicted')
-    plt.plot(test_voltage_times[3], test_voltage_profiles[3], color='g', dashes=[2, 2], label='measured')
-    plt.fill_between(test_voltage_times[3], v_hats[3], test_voltage_profiles[3], label='delta', color='lightgrey')
+    plt.plot(test_voltage_times[-1], v_hats[-1], color='blue', label='predicted')
+    plt.plot(test_voltage_times[-1], test_voltage_profiles[-1], color='g', dashes=[2, 2], label='measured')
+    plt.fill_between(test_voltage_times[-1], v_hats[-1], test_voltage_profiles[-1], label='delta', color='lightgrey')
     plt.xlabel('time (s)', fontsize=20)
     plt.title('Generalization', fontsize=20)
     plt.legend()
@@ -709,4 +718,3 @@ def vis_predict_usecases(profiles, r_0, r_1, c_1, params):
     print('Saved plot to:', '../../../reports/figures/theory_baseline-' + str(MODEL_ID) + '-' + profile + '-test_profile.png')
     fig.savefig('../../../reports/figures/theory_baseline-' + str(MODEL_ID) + '-' + profile + '-test_profile.png')
     return v
-
