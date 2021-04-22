@@ -1,7 +1,7 @@
 # Profiles
-The FOBSS profiles are described in great detail in data/fobss_data/profiles.xlsx. This README should provide a classification of the different profiles to help with identifying possible use cases for training the model
+The FOBSS profiles are described in great detail in data/fobss_data/profiles.xlsx. This README should provide a classification of the different profiles to help with identifying possible use cases for training the model. Some of these profiles are repeated in different runs indicated by the number in the parantheses:
 ## Small profiles
-These profiles are short in time and at most include 3 charge or discharge processes. Some of these profiles are repeated in different runs indicated by the number in the parantheses
+These profiles are short in time and at most include 3 charge or discharge processes. 
 - -10A 25A (1)
 - -10A -25A (1)
 - -10A (9)
