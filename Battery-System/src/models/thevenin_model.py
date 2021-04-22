@@ -1,24 +1,64 @@
 """
-Module containing all necessary functions for the theory based thevenin model for voltage time series prediciton.
+Module containing all necessary functions for the theory based Thevenin Model for voltage time series prediciton.
 """
 import sys 
 import context
 import numpy as np
 import matplotlib.pyplot as plt
-import src.data.data_preprocessing as util
 import sklearn.metrics as metrics
 from tabulate import tabulate
 
+import src.data.data_preprocessing as util
+
 # -------------------------- utility functions --------------------------
 def cut_profile(sequence, cutoff_time):
-    cutted_seq = list()
+    """Cuts the profile at a given point in time.
+
+    This method is used to cut profiles that contain unnecessary data at the end.
+
+    Args:
+        sequence (numpy.ndarray): 
+            The first sequence which gets converted into multiple subarrays of length: n_steps
+            
+        cutoff_time (int):
+            The time at which the remaining part of the profile gets omitted
+        
+    Returns:
+        A numpy array containing the cutted profile in the same format.
+    """
+    cutted_time = list()
+    cutted_data = list()
     for i in range(len(sequence)):
         if (sequence[i,0] < cutoff_time):
-            cutted_seq.append(sequence[i,1])
+            cutted_time.append(sequence[i,0])
+            cutted_data.append(sequence[i,1])
+            
+    cutted_time = np.array(cutted_time)    
+    cutted_data = np.array(cutted_data)
 
-    return np.array(cutted_seq)
+    return np.column_stack((cutted_time, cutted_data))
 
 def load_profile(profile, params, cutoff_time = sys.maxsize, visualize = False):
+    """Loads the provided battery profile and prepares it for later analysis.
+
+    If required, the battery profile can be visualized.
+
+    Args:
+        profile (str): 
+            The profile that should be loaded
+            
+        params (dict): 
+            The hyperparameter dictionary containing (at least) the keys: d_sample, cell, gauss_sigma
+            
+        cutoff_time (int):
+            Optional parameter. The time at which the remaining part of the profile gets omitted
+            
+        visualize (bool):
+            Optional parameter. Decides if a visualization of the loaded profile is created. 
+        
+    Returns:
+        A numpy array containing the current and voltage of the loaded profile.
+    """
     # ------------- load voltage -------------
     train_voltage_data = np.loadtxt('../../../data/raw/fobss_data/data/' + profile + '/cells/Slave_' + str(params['stack']) + '_Cell_Voltages.csv', delimiter=';')
     train_voltage_data = train_voltage_data[::params['d_sample']]
@@ -33,7 +73,7 @@ def load_profile(profile, params, cutoff_time = sys.maxsize, visualize = False):
 
     if (train_voltage.shape[0] > cutoff_time):
         # if profile contains unnecessary data at the end, it is cut if an appropriate cutoff_time is provided
-        cut_profile(train_voltage, cutoff_time)
+        train_voltage = cut_profile(train_voltage, cutoff_time)
 
     # ------------- load current -------------
     train_current_data = np.loadtxt('../../../data/raw/fobss_data/data/' + profile + '/battery/Battery_Current.csv', delimiter=';')
@@ -50,9 +90,11 @@ def load_profile(profile, params, cutoff_time = sys.maxsize, visualize = False):
 
     if (train_current.shape[0] > cutoff_time):
         # if profile contains unnecessary data at the end, it is cut if an appropriate cutoff_time is provided
-        cut_profile(train_current, cutoff_time)
+        train_current = cut_profile(train_current, cutoff_time)
     
     if (visualize):
+        # if profile should be visualized
+
         fig,_ = plt.subplots(figsize=(15,10))
         # ------------- voltage -------------
         plt.subplot(2,2,1)  
@@ -83,12 +125,26 @@ def load_profile(profile, params, cutoff_time = sys.maxsize, visualize = False):
 
 # -------------------------- model parameter functions --------------------------
 def identify_instant_volt_change(train_current, train_voltage):
+    """Identifies the instantaneous voltage change and returns the resulting parameters.
+
+    Args:
+        train_current (numpy.ndarray): 
+            The current data used for determining the model parameters
+            
+        train_voltage (numpy.ndarray): 
+            The voltage data used for determining the model parameters
+            
+    Returns:
+        The determined parameter r_0, the instantanous current change and the index of maximum voltage change.
+    """
+    # get necessary data
     train_voltage_time = train_voltage[:,0]
     train_voltage_profile = train_voltage[:,1]
     train_current_time = train_current[:,0]
     train_current_profile = train_current[:,1]
     volt_grad = np.gradient(train_voltage_profile) 
     cur_grad = np.gradient(train_current_profile)
+    
     # determine if charge or discharge profile
     if (train_voltage_profile[-1] - train_voltage_profile[0] > 0):
         # charge profile
@@ -157,6 +213,7 @@ def identify_instant_volt_change(train_current, train_voltage):
     print('---------------------------------------------------')
 
     # ------------- delta_i -------------
+    # get time of instant current change
     if (charge):
         max_cur_change = np.argmin(cur_grad)
     else:
@@ -169,14 +226,16 @@ def identify_instant_volt_change(train_current, train_voltage):
     print('delta_i (A):', round(delta_i, 5))
     print('---------------------------------------------------')
 
-    # ------------- R_0 -------------
+    # ------------- r_0 -------------
+    # compute r_0
     r_0 = delta_v_0 / delta_i
     print('R_0 (\u03A9):', round(r_0, 6))
     print('---------------------------------------------------')
 
-    # ------------- Test -------------
+    # test if parameters are plausible
     print('Test: delta_v = r_0 * delta_i =', round(r_0 * delta_i, 5))
 
+    # visualize results
     plt.plot(train_voltage_time, train_voltage_profile)
     plt.hlines(train_voltage_profile[low_index_volt], train_voltage[low_index_volt,0], train_voltage[-1,0], color='red', linestyles='dashed')
     plt.hlines(train_voltage_profile[high_index_volt], train_voltage[high_index_volt,0], train_voltage[-1,0], color='red', linestyles='dashed')
@@ -188,12 +247,39 @@ def identify_instant_volt_change(train_current, train_voltage):
     return r_0, delta_i, max_volt_change_index
 
 def identify_steady_state_voltage_change(train_current, train_voltage, r_0, delta_i, max_volt_change_index, params):
+    """Identifies the steady state voltage change and returns the resulting parameters.
+
+    Args:
+        train_current (numpy.ndarray): 
+            The current data used for determining the model parameters
+            
+        train_voltage (numpy.ndarray): 
+            The voltage data used for determining the model parameters
+
+        r_0 (double): 
+            The parameter r_0 that was previously determined
+
+        delta_i (double): 
+            The instantanous current change
+
+        max_volt_change_index (int): 
+            The index of maximum voltage change.
+
+        params (dict): 
+            The hyperparameter dictionary containing (at least) the key: convergence_steps
+            
+    Returns:
+        The determined parameter r_1, the index of maximum current decrease, the steady state time, 
+        the index of maximum voltage and the index of the steady state. 
+    """
+    # get necessary data
     train_voltage_time = train_voltage[:,0]
     train_voltage_profile = train_voltage[:,1]
     train_current_time = train_current[:,0]
     train_current_profile = train_current[:,1]
     volt_grad = np.gradient(train_voltage_profile) 
     cur_grad = np.gradient(train_current_profile)
+    
     # determine if charge or discharge profile
     if (train_voltage_profile[-1] - train_voltage_profile[0] > 0):
         # charge profile
@@ -257,14 +343,15 @@ def identify_steady_state_voltage_change(train_current, train_voltage, r_0, delt
     print('delta_v_infty (V):', round(delta_v_infty, 5))
     print('---------------------------------------------------')
 
-    # ------------- R_1 -------------
+    # ------------- r_1 -------------
     r_1 = (delta_v_infty - r_0 * delta_i) / delta_i
     print('R_1 (\u03A9):', round(r_1, 6))
     print('---------------------------------------------------')
 
-    # ------------- Test -------------
+    # test if parameters are plausible
     print('Test: delta_v_infty = (R_0 + R_1) * delta_i =', round((r_0 + r_1) * delta_i, 5))
 
+    # visualize results
     plt.plot(train_voltage_time, train_voltage_profile)
     plt.hlines(train_voltage_profile[max_voltage_index], train_voltage[max_voltage_index,0],  train_voltage[-1,0], color='red', linestyles='dashed')
     plt.hlines(train_voltage_profile[steady_state_index], train_voltage[max_decrease_index,0],  train_voltage[-1,0], color='red', linestyles='dashed')
@@ -276,12 +363,41 @@ def identify_steady_state_voltage_change(train_current, train_voltage, r_0, delt
     return r_1, max_decrease_index, steady_state_time, max_voltage_index, steady_state_index
 
 def identify_steady_state_time(train_current, train_voltage, r_1, max_decrease_index, steady_state_time, max_voltage_index, steady_state_index):
+    """Identifies the steady state time and returns the resulting parameters.
+
+    Args:
+        train_current (numpy.ndarray): 
+            The current data used for determining the model parameters
+            
+        train_voltage (numpy.ndarray): 
+            The voltage data used for determining the model parameters
+
+        r_1 (double): 
+            The parameter r_1 that was previously determined
+
+        max_decrease_index (int): 
+            The index of maximum current decrease
+
+        steady_state_time (double): 
+            The time when the steady state is reached
+
+        max_voltage_index (int): 
+            The index of maximum voltage
+
+        steady_state_index (int): 
+            The index when the steady state is reached
+            
+    Returns:
+        The parameter c_1.
+    """
+    # get necessary data
     train_voltage_time = train_voltage[:,0]
     train_voltage_profile = train_voltage[:,1]
     train_current_time = train_current[:,0]
     train_current_profile = train_current[:,1]
     volt_grad = np.gradient(train_voltage_profile) 
     cur_grad = np.gradient(train_current_profile)
+    
     # determine if charge or discharge profile
     if (train_voltage_profile[-1] - train_voltage_profile[0] > 0):
         # charge profile
@@ -301,11 +417,12 @@ def identify_steady_state_time(train_current, train_voltage, r_1, max_decrease_i
     print('C_1 (F):', round(c_1, 2))
     # print(r_1 * c_1)
 
-    # ------------- Test -------------
+    # test if parameters are plausible
     print('---------------------------------------------------')
     print('Test: delta_t = 4 * R_1 * C_1 =', round(4 * r_1 * c_1, 5))
     print('Test: R_1 * C_1 =', r_1 * c_1)
 
+    # visualize results
     if (charge):
         upper_y = np.max(train_voltage_profile)
         lower_y = np.min(train_voltage_profile)
@@ -325,12 +442,66 @@ def identify_steady_state_time(train_current, train_voltage, r_1, max_decrease_i
 
 # -------------------------- SOC OCV functions --------------------------
 def lin(x, x_1, y_1, x_2, y_2):
+    """Provides a linear interpolation between two points.
+
+    Args:
+        x (double): 
+            The x value for which the respective y value should be computed
+            
+        x_1 (double):
+            The x coordinate of the first point
+
+        y_1 (double):
+            The y coordinate of the first point
+
+        x_2 (double): 
+            The x coordinate of the second point
+
+        y_2 (double): 
+            The y coordinate of the second point
+            
+    Returns:
+        The y value for the provided input value x.
+    """
     a = (y_2 - y_1) / (x_2 - x_1)
     b = y_1 - (a * x_1)
     return a * x + b
 
-# ------------- ocv(z) -------------
+#  ocv(z) -------------
+def ocv_simple(z, z_1, v_1, z_2, v_2):
+    """Provides a simple OCV computation using linear interpolation between two reference OCV values.
+
+    Args:
+        z (double): 
+            The SOC value of the required point
+            
+        z_1 (double):
+            The SOC value of the first reference value
+
+        v_1 (double):
+            The OCV value of the first reference value
+
+        z_2 (double): 
+            The SOC value of the second reference value
+
+        v_2 (double): 
+            The OCV value of the second reference value
+            
+    Returns:
+        The OCV value of the required SOC. 
+    """
+    return lin(z * 100, z_1 * 100, v_1, z_2 * 100, v_2)
+
 def ocv_exact(z):
+    """Returns the exact OCV using the expert-provided OCV curve.
+
+    Args:
+        z (double): 
+            The SOC value of the required OCV
+            
+    Returns:
+        The required OCV.
+    """
     if (z < 0 or z > 1):
         return -1
     
@@ -345,14 +516,32 @@ def ocv_exact(z):
     return ocv_curve[soc_index,2]
 
 def ocv_exact_lin(z):
+    """Returns the exact OCV using the expert-provided OCV curve. Between these discrete measurements,
+    the values are linearly interpolated.
+
+    Args:
+        z (double): 
+            The SOC value of the required OCV
+            
+    Returns:
+        The required OCV.
+    """
     ocv_curve = np.loadtxt('../../../data/processed/soc_ocv/ocv_curve.csv', delimiter=';')
     soc = ocv_curve[:,1]
     ocv = ocv_curve[:,2]
     return np.interp(z, soc, ocv)
 
-
-# ------------- ocv_inverse(v) -------------
+#  ocv_inverse(v) ----
 def ocv_inverse_exact(v):
+    """Returns the exact SOC using the expert-provided OCV curve. 
+
+    Args:
+        v (double):
+            The OCV of the required SOC
+            
+    Returns:
+        The required SOC. 
+    """
     ocv_curve = np.loadtxt('../../../data/processed/soc_ocv/ocv_curve.csv', delimiter=';')
     ocv = ocv_curve[:,2]
     delta = np.abs(ocv - v)
@@ -361,88 +550,71 @@ def ocv_inverse_exact(v):
     return round(z, 4)
 
 def ocv_inverse_exact_lin(v, ocv_curve):
+    """Returns the exact SOC using the expert-provided OCV curve. Between these discrete measurements,
+    the values are linearly interpolated.
+
+    Args:
+        v (double):
+            The OCV of the required SOC
+
+        ocv_curve (numoy.ndarray):
+            The original OCV curve
+            
+    Returns:
+        The required SOC. 
+    """
     z = np.argmin(np.abs(ocv_curve[:,1] - v))
     return ocv_curve[z,0]
 
-# -------
-def ocv_simple(z, z_1, v_1, z_2, v_2, ocv_curve):
-    return lin(z * 100, z_1 * 100, v_1, z_2 * 100, v_2)
+def plot_OCV_curve():
+    """Plots the SOC curves using the exact linear interpolated method.
 
-def ocv_inverse_simple(v, ocv_curve):
-    z = np.argmin(np.abs(ocv_curve[:,1] - v))
-    return ocv_curve[z,0]
-# -------
-
-def plot_SOC_curves(profile, params):
+    Returns:
+        The plotted figure.
+    """
     # ------------- create & plot curves -------------
     steps = np.arange(0, 1, 0.001)
     percent = steps * 0.1
     volt = np.arange(3, 4, 0.001)
 
-    ocv_curve_simple = list()
-    ocv_curve_exact = list()
     ocv_curve_exact_lin = list()
-
-    soc_curve_simple = list()
-    soc_curve_exact = list()
     soc_curve_exact_lin = list()
 
     for i in range(len(steps)):
-        ocv_curve_exact.append([steps[i], ocv_exact(steps[i])])
         ocv_curve_exact_lin.append([steps[i], ocv_exact_lin(steps[i])])
 
-    ocv_curve_exact = np.array(ocv_curve_exact)
     ocv_curve_exact_lin = np.array(ocv_curve_exact_lin)
 
-    # -------
-    _, train_voltage = load_profile(profile, params, cutoff_time = 700)
-    train_voltage_profile = train_voltage[:,1]
-    v_1 = train_voltage_profile[0]
-    v_2 = train_voltage_profile[-1]
-    z_1 = ocv_inverse_exact_lin(v_1, ocv_curve_exact_lin)
-    z_2 = ocv_inverse_exact_lin(v_2, ocv_curve_exact_lin)
-
-    for i in range(len(steps)):
-        ocv_curve_simple.append([steps[i], ocv_simple(steps[i], z_1, v_1, z_2, v_2, ocv_curve_exact_lin)])
-
-    ocv_curve_simple = np.array(ocv_curve_simple)
-    # -------
-
     for i in range(len(volt)):
-        soc_curve_exact.append([volt[i], ocv_inverse_exact(volt[i])])
         soc_curve_exact_lin.append([volt[i], ocv_inverse_exact_lin(volt[i], ocv_curve_exact_lin)])
-        soc_curve_simple.append([volt[i], ocv_inverse_simple(volt[i], ocv_curve_simple)])
 
-    soc_curve_exact = np.array(soc_curve_exact)
     soc_curve_exact_lin = np.array(soc_curve_exact_lin)
-    soc_curve_simple = np.array(soc_curve_simple)
 
-    fig,_ = plt.subplots(figsize=(7,5))
-#     plt.subplot(3,3,1)
-#     plt.plot(ocv_curve_simple[:,0], ocv_curve_simple[:,1])
-#     plt.ylabel('OCV')
-#     plt.title('linear')
-#     plt.subplot(3,3,2)  
-#     plt.plot(ocv_curve_exact[:,0], ocv_curve_exact[:,1])
-#     plt.title('73 values')
-#     plt.subplot(3,3,3)  
+    fig,_ = plt.subplots(figsize=(7,5))  
     plt.plot(ocv_curve_exact_lin[:,0], ocv_curve_exact_lin[:,1])
     plt.title('SOC - OCV relationship', fontsize=20)
     plt.xlabel('SOC (%)', fontsize=20)
     plt.ylabel('OCV (V)', fontsize=20)
-#     plt.subplot(3,3,4)  
-#     plt.plot(soc_curve_simple[:,0], soc_curve_simple[:,1])
-#     plt.ylabel('SOC')
-#     plt.xlabel('OCV')
-#     plt.subplot(3,3,5)  
-#     plt.plot(soc_curve_exact[:,0], soc_curve_exact[:,1])
-#     plt.xlabel('OCV')
-#     plt.subplot(3,3,6)  
-#     plt.plot(soc_curve_exact[:,0], soc_curve_exact_lin[:,1])
-#     plt.xlabel('OCV')
     plt.show()
+    
+    return fig
 
 def get_SOC_values(profile, params):
+    """Provides the required SOC values of a profile. 
+    
+    The values are the SOC and OCV at the start and the end of the profile used to simplify 
+    the OCV curve during voltage prediction.
+
+    Args:
+        profile (str): 
+            The profile for which the SOC values should be computed
+            
+        params (dict): 
+            The hyperparameter dictionary containing (at least) the keys: d_sample, cell, gauss_sigma
+
+    Returns:
+        The plotted figure.
+    """
     # ------------- create ocv curve -------------
     steps = np.arange(0, 1, 0.001)
     ocv_curve_exact_lin = list()
@@ -453,7 +625,7 @@ def get_SOC_values(profile, params):
     ocv_curve_exact_lin = np.array(ocv_curve_exact_lin)
 
     # ------------- determine SOC range -------------
-    _, train_voltage = load_profile(profile, params, cutoff_time = 700)
+    _, train_voltage = load_profile(profile, params)
     train_voltage_profile = train_voltage[:,1]
     v_1 = train_voltage_profile[0]
     v_2 = train_voltage_profile[-1]
@@ -462,38 +634,110 @@ def get_SOC_values(profile, params):
 
     return z_1, v_1, z_2, v_2, ocv_curve_exact_lin
 
-# -------------------------- z(t) --------------------------
+
+# -------------------------- Voltage Prediction (logic) --------------------------
+
+# z(t) 
 class z_wrapper:
+    """Wrapper Class for the SOC during voltage prediction.
+
+    Attributes:
+        z_k (double): 
+            The SOC at time t
+            
+        q (double): 
+            The maximum charge level of the battery
+    """
     def __init__(self, z_t0, q):
         self.z_k = z_t0
         self.q = q
         
     def z(self, i_k, delta_t):
+        """Computes the SOC at time t+1.
+
+        Args:
+            i_k (double): 
+                The current at time t
+
+            delta_t (double): 
+                The time difference between two consecutive current measurements
+
+        Returns:
+            The SOC at time t+1
+        """
         # i > 0 on discharge, i < 0 on charge
         i_k_h = i_k * (1 / 3600) # convert seconds to hours
         self.z_k = self.z_k - (i_k_h * delta_t) / self.q
         return self.z_k
     
-# -------------------------- i(t) --------------------------
+# i(t) 
 def i(t):
+    """Returns the current at a specific point in time.
+
+    Args:
+        t (double): 
+            The required time of the current
+            
+    Returns:
+        The current at time t.
+    """
     index = round(t / 0.1)
     return current[index,1]
 
-# -------------------------- i_r1(t) --------------------------
+# i_r1(t) 
 class i_r1_wrapper:
+    """Wrapper Class for i_r1 during voltage prediction.
+
+    Attributes:
+        i_r1_k (double): 
+            The current i_r1 at time t
+            
+        r_1 (double): 
+            The parameter r_1 which was determined beforehand
+
+        c_1 (double): 
+            The parameter c_1 which was determined beforehand
+    """
     def __init__(self, r_1, c_1):
         self.i_r1_k = 0
         self.r_1 = r_1
         self.c_1 = c_1
         
     def i_r1(self, i_k, delta_t):
+        """Computes i_r1 at time t+1.
+
+        Args:
+            i_k (double): 
+                The current at time t
+
+            delta_t (double): 
+                The time difference between two consecutive current measurements
+
+        Returns:
+            The current i_r1 at time t+1
+        """
         tau = self.r_1 * self.c_1
         exponent = - delta_t / tau
         self.i_r1_k = np.exp(exponent) * self.i_r1_k + (1 - np.exp(exponent)) * i_k
         return self.i_r1_k
 
-# -------------------------- v(t) --------------------------
+# v(t) 
 class v_wrapper:
+    """Wrapper Class for the voltage during voltage prediction.
+
+    Attributes:
+        z_class (z_wrapper): 
+            The SOC wrapper class
+
+        i_r1_class (i_r1_wrapper): 
+            The i_r1 wrapper class
+            
+        r_1 (double): 
+            The parameter r_1 which was determined beforehand
+
+        c_1 (double): 
+            The parameter c_1 which was determined beforehand
+    """
     def __init__(self, z_t0, q, r_0, r_1, c_1):
         self.z_class = z_wrapper(z_t0, q)
         self.i_r1_class = i_r1_wrapper(r_1, c_1)
@@ -501,14 +745,48 @@ class v_wrapper:
         self.r_1 = r_1
         
     def v_k(self, i_k, delta_t, z_1, v_1, z_2, v_2, ocv_curve_exact_lin):
+        """Computes i_r1 at time t+1.
+
+        Args:
+            i_k (double): 
+                The current at time t
+
+            delta_t (double): 
+                The time difference between two consecutive current measurements
+
+        Returns:
+            The current i_r1 at time t+1
+        """
         z_t = self.z_class.z(i_k, delta_t)
-        ocv = ocv_simple(z_t, z_1, v_1, z_2, v_2, ocv_curve_exact_lin)
-        # ocv = ocv_exact_lin(z_t, z_1, v_1, z_2, v_2, ocv_curve_exact_lin)
+        ocv = ocv_simple(z_t, z_1, v_1, z_2, v_2)
         i_r1_k = self.i_r1_class.i_r1(i_k, delta_t)
         return ocv - self.r_1 * i_r1_k - self.r_0 * i_k
-    
-# -------------------------- predict voltage --------------------------
+
+# -------------------------- Voltage Prediction (Implementation) --------------------------
 def vis_predict(profile, r_0, r_1, c_1, params):
+    """Computes a voltage prediction using the Thevenin Model.
+    
+    This method also visualizes the resulting predicted voltage curve and saves it to the appropriate directory.
+
+    Args:
+        profile (str): 
+            The profile which should be predicted
+
+        r_0 (double): 
+            The parameter r_0 which was determined beforehand
+        
+        r_1 (double): 
+            The parameter r_1 which was determined beforehand
+
+        c_1 (double): 
+            The parameter c_1 which was determined beforehand
+
+        params (dict): 
+            The hyperparameter dictionary containing (at least) the keys: d_sample, cell, gauss_sigma
+
+    Returns:
+        The predicted voltage profile.
+    """
     # ------------- load data -------------
     test_current, test_voltage = load_profile(profile, params, cutoff_time = 700)
     test_voltage_time = test_voltage[:,0]
@@ -520,7 +798,7 @@ def vis_predict(profile, r_0, r_1, c_1, params):
     
     # ------------- set parameters -------------
     v_0 = test_voltage_profile[0]
-    z_t0 = ocv_inverse_simple(v_0, ocv_curve_exact_lin)
+    z_t0 = ocv_inverse_exact_lin(v_0, ocv_curve_exact_lin)
     q = 33.2 # expert knowledge
 
     print('------------------- Params -------------------')
@@ -575,6 +853,29 @@ def vis_predict(profile, r_0, r_1, c_1, params):
     return v
     
 def predict(profile, r_0, r_1, c_1, params):
+    """Computes i_r1 at time t+1.
+
+    This method does not include a visualization of the voltage prediction.
+
+    Args:
+        profile (str): 
+            The profile which should be predicted
+
+        r_0 (double): 
+            The parameter r_0 which was determined beforehand
+        
+        r_1 (double): 
+            The parameter r_1 which was determined beforehand
+
+        c_1 (double): 
+            The parameter c_1 which was determined beforehand
+
+        params (dict): 
+            The hyperparameter dictionary containing (at least) the keys: d_sample, cell, gauss_sigma
+
+    Returns:
+        The predicted voltage profile.
+    """
     # ------------- load data -------------
     test_current, test_voltage = load_profile(profile, params, cutoff_time = 700)
     test_voltage_time = test_voltage[:,0]
@@ -586,7 +887,7 @@ def predict(profile, r_0, r_1, c_1, params):
     
     # ------------- set parameters -------------
     v_0 = test_voltage_profile[0]
-    z_t0 = ocv_inverse_simple(v_0, ocv_curve_exact_lin)
+    z_t0 = ocv_inverse_exact_lin(v_0, ocv_curve_exact_lin)
     q = 33.2 # expert knowledge
 
     # ------------- predict profile -------------
@@ -608,7 +909,30 @@ def predict(profile, r_0, r_1, c_1, params):
     return v
 
 def vis_predict_usecases(profiles, r_0, r_1, c_1, params):
+    """Computes the voltage predictions on the three defined use cases using the Thevenin Model.
     
+    This method also visualizes the resulting predicted voltage curves of the three use cases of
+    Reproduction, Abstraction and Generalization.
+
+    Args:
+        profiles (numpy.ndarray): 
+            The three dimensional array containing the profile names used to predict the use cases.
+
+        r_0 (double): 
+            The parameter r_0 which was determined beforehand
+        
+        r_1 (double): 
+            The parameter r_1 which was determined beforehand
+
+        c_1 (double): 
+            The parameter c_1 which was determined beforehand
+
+        params (dict): 
+            The hyperparameter dictionary containing (at least) the keys: d_sample, cell, gauss_sigma
+
+    Returns:
+        The predicted voltage profile.
+    """
     i = 0
     test_voltage_times = list()
     test_voltage_profiles = list()
@@ -616,7 +940,7 @@ def vis_predict_usecases(profiles, r_0, r_1, c_1, params):
     
     for profile in profiles:
         # ------------- load data -------------
-        test_current, test_voltage = load_profile(profile, params, cutoff_time = 700)
+        test_current, test_voltage = load_profile(profile, params)
         test_voltage_time = test_voltage[:,0]
         test_voltage_times.append(test_voltage_time)
         test_voltage_profile = test_voltage[:,1]
@@ -628,7 +952,7 @@ def vis_predict_usecases(profiles, r_0, r_1, c_1, params):
 
         # ------------- set parameters -------------
         v_0 = test_voltage_profile[0]
-        z_t0 = ocv_inverse_simple(v_0, ocv_curve_exact_lin)
+        z_t0 = ocv_inverse_exact_lin(v_0, ocv_curve_exact_lin)
         q = 33.2 # expert knowledge
 
         print('------------------- Params -------------------')
