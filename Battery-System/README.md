@@ -6,54 +6,33 @@ Project Organization
 ------------
 
     ├── LICENSE
-    ├── Makefile          
     ├── README.md               <- The top-level README for developers using this project
     ├── data
-    │   ├── external            <- Data from third party sources
-    │   ├── interim             <- Intermediate data that has been transformed
-    │   ├── processed           <- The final, canonical data sets for modeling
+    │   ├── processed           <- Additional data needed by the models
     │   └── raw                 <- The original, immutable data dump
     │
-    ├── docs               
-    │
-    ├── models                  <- Trained and serialized models, model predictions, or model summaries
+    ├── models                  <- Trained and serialized models
+    │   ├── DS                  <- Data Baseline models
+    │   ├── T                   <- Theory Baseline models
+    │   └── TGDS                <- Theor-guided models
     │
     ├── notebooks               <- Jupyter notebooks
     │   ├── data                <- To visualize the FOBSS dataset
-    │   ├── features            <- Different analysis on the FOBSS dataset
-    │   └── models              <- Several Notebooks which execute the source code for training the models
+    │   │   └── profiles        <- Plots of all profiles in the FOBSS dataset
+    │   │
+    │   ├── features            <- Different analysis of the FOBSS dataset
+    │   │
+    │   └── models              <- Several Notebooks which execute the source code providede in src/
     │       ├── data_baseline   <- Data Science based models
     │       ├── theory_baseline <- Theory based models
-    │       ├── theory_guided   <- Models combining theory with data science
-    │       └── other           <- Old approaches, only kept for documentation purposes
+    │       └── theory_guided   <- Models combining theory with Data Science
     │
-    ├── references              <- Data dictionaries, manuals, and all other explanatory materials
-    │
-    ├── reports                 <- Generated analysis as HTML, PDF, LaTeX, etc.
-    │   └── figures             <- Generated graphics and figures to be used in reporting
-    │
-    ├── environment.yml         <- The requirements file for reproducing the analysis environment
-    │
-    ├── setup.py           
+    ├── reports                 <- Generated graphics to be used in reporting
+    │   └── figures             <- Learning curves during training as well as plots of the test data profiles 
+    │   
     ├── src                     <- Source code for use in this project
-    │   ├── __init__.py         <- Makes src a Python module
+    │   ├── data                <- Utility functions to preprocess the raw data for later use 
     │   │
-    │   ├── data                <- Scripts to download or generate data
-    │   │
-    │   ├── features            <- Scripts to turn raw data into features for modeling
-    │   │   └── build_features.py
-    │   │
-    │   ├── models              <- Scripts to train models and then use trained models to make
-    │   │   │                      predictions
-    │   │   ├── predict_model.py
-    │   │   └── train_model.py
-    │   │
-    │   └── visualization       <- Scripts to create exploratory and results oriented visualizations
-    │       └── visualize.py
-    │
-    └── tox.ini                 <- tox file with settings for running tox; see tox.readthedocs.io
-
+    │   └── models              <- Scripts which capsulate the models trained and executed in the jupyter notebooks
 
 --------
-
-<p><small>Project based on the <a target="_blank" href="https://drivendata.github.io/cookiecutter-data-science/">cookiecutter data science project template</a>. #cookiecutterdatascience</small></p>
