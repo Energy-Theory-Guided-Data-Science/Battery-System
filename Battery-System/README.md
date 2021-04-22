@@ -5,16 +5,16 @@ Battery-System
 Project Organization
 ------------
 
-    ├── LICENSE
+    ├── LICENSE                 <- MIT License
     ├── README.md               <- The top-level README for developers using this project
-    ├── data
+    ├── data                    <- Stores all necessary data
     │   ├── processed           <- Additional data needed by the models
     │   └── raw                 <- The original, immutable data dump
     │
     ├── models                  <- Trained and serialized models
     │   ├── DS                  <- Data Baseline models
     │   ├── T                   <- Theory Baseline models
-    │   └── TGDS                <- Theor-guided models
+    │   └── TGDS                <- Theory-guided models
     │
     ├── notebooks               <- Jupyter notebooks
     │   ├── data                <- To visualize the FOBSS dataset
