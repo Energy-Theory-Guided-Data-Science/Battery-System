@@ -15,32 +15,54 @@ from tensorflow.keras import losses
 from tensorflow.keras import callbacks
 from tabulate import tabulate
 
-from ..data.data_preprocessing import preprocess_raw_data
-
 # ---------------------------------------------------- Callbacks -------------------------------------------------
 class TimeHistory(callbacks.Callback):
+    """Callback handler for keras to monitor the training time.
+
+    Attributes:
+        times (list): 
+            A list of time step values for each consecutive training epoch
+            
+        epoch_time_start (double): 
+            Variable to store the start time of an epoch to later compute the epoch training time
+    """
     def on_train_begin(self, logs={}):
+        """Initialize times array at the beginning of training.
+        Called every time a training starts.
+        """
         self.times = []
 
     def on_epoch_begin(self, epoch, logs={}):
+        """Starts the timer at the begining of an epoch.
+        Called every time a new training epoch starts.
+        """
         self.epoch_time_start = time.time()
 
     def on_epoch_end(self, epoch, logs={}):
+        """Computes the training time needed in this epoch and adds it to the time array.
+        Called every time a training epoch finishes.
+        """
         self.times.append(time.time() - self.epoch_time_start)
         
     def on_predict_begin(self, logs={}):
+        """Resets the times array and starts a new epoch to later compute the time needed for a prediction. 
+        Called every time a prediction starts.
+        """
         self.times = []
         self.epoch_time_start = time.time()
 
     def on_predict_end(self, logs={}):
+        """Computes the time needed to make a prediction.
+        Called every time a prediction finishes.
+        """
         self.times.append(time.time() - self.epoch_time_start)
 
 # --------------------------------------------- LSTM Model ------------------------------------------------------
 class Model: 
     """Responsible for managing the neural network architecture which is used to predict voltage time series data.
 
-    Model is suited to work with the FOBSS data set (http://dbis.ipd.kit.edu/download/FOBSS_final.pdf) but can also be used with
-    other kinds of current and voltage data.
+    Model is suited to work with the FOBSS data set (http://dbis.ipd.kit.edu/download/FOBSS_final.pdf) 
+    but can also be used with other kinds of current and voltage data.
 
     Attributes:
         model (tensorflow.python.keras.engine.sequential.Sequential): 
@@ -55,7 +77,6 @@ class Model:
         scalers_train ((sklearn.preprocessing.MinMaxScaler, sklearn.preprocessing.MinMaxScaler)):
             A tuple of scaler objects used to scale and rescale X and y for training
     """
-   
     def initialize(self, params):
         """Initializes the LSTM model.
 
@@ -85,7 +106,7 @@ class Model:
         self.params = params
         return None
     
-    def train(self, X, y, scalers):
+    def train(self, X, y, scalers_train):
         """Trains the LSTM model.
 
         For visualization purposes, the MSE and MAE over all training epochs will be ploted.
@@ -97,11 +118,13 @@ class Model:
             y (numpy.ndarray): 
                 The groundtruth output data
             
-            scalers (tuple):
-                The scaler objects which were used to scale X and y
+            scalers_train ((sklearn.preprocessing.MinMaxScaler, sklearn.preprocessing.MinMaxScaler)):
+                A tuple of scaler objects used to scale and rescale X and y for training
+                
         Returns:
-            The time_callback which is used to measure the time needed to train the model. In adition the matplotlib 
-            figure used to plot the visualization. This is needed so that the plots can be saved at the appropriate location.
+            The time_callback which is used to measure the time needed to train the model. 
+            In adition the matplotlib figure used to plot the visualization. 
+            This is needed so that the plots can be saved at the appropriate location.
         """
         # --------- train model ---------
         time_callback = TimeHistory()
@@ -126,7 +149,7 @@ class Model:
         
         # save parameters
         self.history = history
-        self.scalers_train = scalers
+        self.scalers_train = scalers_train
         return time_callback, fig
 
 
@@ -144,23 +167,24 @@ class Model:
                 The training output data used in Model.train()
             
             X_validation (numpy.ndarray): 
-                validation input data
+                Validation input data
                 
             y_validation (numpy.ndarray): 
-                validation output data
+                Validation output data
                 
             X_test (numpy.ndarray): 
-                test input data
+                Test input data
                 
             y_test (numpy.ndarray): 
-                test output data
+                Test output data
 
             scalers_train ((sklearn.preprocessing.MinMaxScaler, sklearn.preprocessing.MinMaxScaler)):
                 A tuple of scaler objects used to scale and rescale X and y for training
                 
         Returns:
-            The predicted train, validation and test profiles. In adition the matplotlib figure used to plot 
-            the visualization is returned. This is needed so that the plots can be saved at the appropriate location.
+            The predicted train, validation and test profiles. 
+            In adition the matplotlib figure used to plot the visualization is returned. 
+            This is needed so that the plots can be saved at the appropriate location.
         """
         # --------- predict on data ---------
         time_train = TimeHistory()
@@ -276,8 +300,9 @@ class Model:
                 A tuple of scaler objects used to scale and rescale X and y for training
                 
         Returns:
-            The predicted train, use case 1, use case 2 and use case 3 profiles. In adition the matplotlib figure used to plot 
-            the visualization is returned. This is needed so that the plots can be saved at the appropriate location.
+            The predicted train, use case 1, use case 2 and use case 3 profiles. 
+            In adition the matplotlib figure used to plot the visualization is returned. 
+            This is needed so that the plots can be saved at the appropriate location.
         """
         # --------- predict on data ---------
         time_train = TimeHistory()
