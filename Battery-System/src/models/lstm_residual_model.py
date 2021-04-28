@@ -1,5 +1,5 @@
 """
-Module containing a class modelling an LSTM network for voltage time series prediciton.
+Module containing a class modelling an LSTM network for voltage time series prediciton using residual learning.
 """
 import time
 import numpy as np
@@ -7,71 +7,59 @@ import tensorflow as tf
 import matplotlib.pyplot as plt
 import matplotlib.mlab as mlab
 import sklearn.metrics as metrics
+from tabulate import tabulate
 import tensorflow.python.util.deprecation as deprecation
 # used to hide deprecation warning raised by tensorflow
 deprecation._PRINT_DEPRECATION_WARNINGS = False 
-
 from tensorflow.keras import layers
 from tensorflow.keras import backend
 from tensorflow.keras import losses
 from tensorflow.keras import callbacks
-from tabulate import tabulate
-from ..data.data_preprocessing import preprocess_raw_data
 
-# ---------------------------------------------------- Callbacks ----------------------------------------------------
+# ---------------------------------------------------- Callbacks -------------------------------------------------
 class TimeHistory(callbacks.Callback):
+    """Callback handler for keras to monitor the training time.
+
+    Attributes:
+        times (list): 
+            A list of time step values for each consecutive training epoch
+            
+        epoch_time_start (double): 
+            Variable to store the start time of an epoch to later compute the epoch training time
+    """
     def on_train_begin(self, logs={}):
+        """Initialize times array at the beginning of training.
+        Called every time a training starts.
+        """
         self.times = []
 
     def on_epoch_begin(self, epoch, logs={}):
+        """Starts the timer at the begining of an epoch.
+        Called every time a new training epoch starts.
+        """
         self.epoch_time_start = time.time()
 
     def on_epoch_end(self, epoch, logs={}):
+        """Computes the training time needed in this epoch and adds it to the time array.
+        Called every time a training epoch finishes.
+        """
         self.times.append(time.time() - self.epoch_time_start)
         
     def on_predict_begin(self, logs={}):
+        """Resets the times array and starts a new epoch to later compute the time needed for a prediction. 
+        Called every time a prediction starts.
+        """
         self.times = []
         self.epoch_time_start = time.time()
 
     def on_predict_end(self, logs={}):
+        """Computes the time needed to make a prediction.
+        Called every time a prediction finishes.
+        """
         self.times.append(time.time() - self.epoch_time_start)
 
-# ---------------------------------------------------- Residual LSTM Model ----------------------------------------------------
-# needed for residual loss computation
-# index = 0
-
-# def residual_loss(params, u_pred):
-#     """Wrapper function for residual loss.
-
-#     Args:
-#         params (dict): 
-#             A dictionary containing the hyperparameters
-#         u_pred (numpy.ndarray): 
-#             The predictions made by the theory-based model
-#     Returns: 
-#         The residual loss
-#     """
-#     # wrapper function needed for the custom loss function to be accepted from keras
-#     def loss(y_true, y_pred):
-#         global index
-
-#         delta = abs(y_true - u_pred[index])
-# #         print(delta)
-#         index += 1
-        
-#         # reset index
-#         if (index == u_pred.shape[0]):
-#             index = 0
-
-#         return losses.mean_squared_error(y_pred, delta)
-#     return loss
-
 class Residual_Model: 
-    """Responsible for managing the neural network architecture which is used for residual learning. 
-    The goal is to predict the gap between the theory-based model and the ground-truth, not the voltage itself.
-
-    Residual_Model is suited to work with the FOBSS data set (http://dbis.ipd.kit.edu/download/FOBSS_final.pdf) but can also be used with
-    other kinds of current and voltage data.
+    """Responsible for managing the neural network architecture using residual learning.
 
     Attributes:
         model (tensorflow.python.keras.engine.sequential.Sequential): 
@@ -82,10 +70,12 @@ class Residual_Model:
             
         history (tensorflow.python.keras.callbacks.History): 
             A report of the training procedure
+        
+        scalers_train ((sklearn.preprocessing.MinMaxScaler, sklearn.preprocessing.MinMaxScaler)):
+            A tuple of scaler objects used to scale and rescale X and y for training
     """
-    
     def initialize(self, params):
-        """Initializes the residual LSTM model.
+        """Initializes the Residual LSTM model.
 
         For visualization purposes, a summary of the model will be printed.
 
@@ -93,7 +83,6 @@ class Residual_Model:
             params (dict): 
                 A dictionary containing the hyperparameters
         """
-        
         # --------- create model ---------
         model = tf.keras.Sequential(name='Residual_LSTM')
         # layer 1
@@ -115,9 +104,9 @@ class Residual_Model:
         return None
         
     def train(self, params, X, y, scalers_train):
-        """Trains the residual LSTM model.
+        """Trains the LSTM model.
 
-        For visualization purposes, the training error over all epochs will be ploted.
+        For visualization purposes, the MSE and MAE over all training epochs will be ploted.
 
         Args:
             X (numpy.ndarray): 
@@ -126,11 +115,13 @@ class Residual_Model:
             y (numpy.ndarray): 
                 The groundtruth output data
             
-            scalers (tuple):
-                The scaler objects which were used to scale X and y
+            scalers_train ((sklearn.preprocessing.MinMaxScaler, sklearn.preprocessing.MinMaxScaler)):
+                A tuple of scaler objects used to scale and rescale X and y for training
+                
         Returns:
-            The time_callback which is used to measure the time needed to train the model. In adition the matplotlib 
-            figure used to plot the visualization. This is needed so that the plots can be saved at the appropriate location.
+            The time_callback which is used to measure the time needed to train the model. 
+            In adition the matplotlib figure used to plot the visualization. 
+            This is needed so that the plots can be saved at the appropriate location.
         """
         # --------- train model ---------
         time_callback = TimeHistory()
@@ -159,24 +150,46 @@ class Residual_Model:
         return time_callback, fig
     
     def test(self, X_train, y_train, u_train, X_validation, y_validation, u_validation, X_test, y_test, u_test, scalers_train):
-        """Tests the residual LSTM model on test data.
-
-        For visualization purposes, a table with several metrics for the training data 
-        will be printed in adition to plots of the used profile.
-
+        """Tests the LSTM model on validation and test data.
+    
+        For visualization purposes, a table with several metrics for training, validation and test data 
+        will be printed in adition to plots of the validation and test profiles used.
+ 
         Args:
             X_train (numpy.ndarray):
                 The training input data used in Model.train()
-
+                
             y_train (numpy.ndarray):
                 The training output data used in Model.train()
 
-            scalers (tuple):
-                The scaler objects which were used to scale X and y in training and test data
+            u_train (numpy.ndarray):
+                Thevenin model output data for trainig
+            
+            X_validation (numpy.ndarray): 
+                Validation input data
+                
+            y_validation (numpy.ndarray): 
+                Validation output data
 
+            u_validation (numpy.ndarray): 
+                Thevenin model output data for validation
+
+            X_test (numpy.ndarray): 
+                Test input data
+                
+            y_test (numpy.ndarray): 
+                Test output data
+                
+            u_test (numpy.ndarray): 
+                Thevenin model output data for testing
+                
+            scalers_train ((sklearn.preprocessing.MinMaxScaler, sklearn.preprocessing.MinMaxScaler)):
+                A tuple of scaler objects used to scale and rescale X and y for training
+                
         Returns:
-            A Tuple containing the error of the prediction on training data. In adition the matplotlib figure 
-            used to plot the visualization is returned. This is needed so that the plots can be saved at the appropriate location.
+            The predicted train profile. 
+            In adition the matplotlib figure used to plot the visualization is returned. 
+            This is needed so that the plots can be saved at the appropriate location.
         """
         # --------- predict on training ---------
         time_train = TimeHistory()
@@ -237,7 +250,7 @@ class Residual_Model:
 
         fig, _ = plt.subplots(figsize=(14,10))
         plt.subplot(2,2,1)
-        time_val = np.arange(yhat_plus_uhat_val_unscaled.shape[0]) * 0.25
+        time_val = np.arange(yhat_plus_uhat_val_unscaled.shape[0]*self.params['d_sample'])[::self.params['d_sample']]*0.25
         plt.plot(time_val, u_val_unscaled, color='blue', dashes=[2, 2], label='theory')
         plt.plot(time_val, yhat_plus_uhat_val_unscaled, color='blue', label='residual + theory')
         plt.plot(time_val, y_true_val_unscaled, color='g', label='measured')
@@ -254,7 +267,7 @@ class Residual_Model:
         plt.title('Absolute Error', fontsize=20)
         plt.legend()
         plt.subplot(2,2,2)
-        time_test = np.arange(yhat_plus_uhat_test_unscaled.shape[0]) * 0.25
+        time_test = np.arange(yhat_plus_uhat_test_unscaled.shape[0]*self.params['d_sample'])[::self.params['d_sample']]*0.2
         plt.plot(time_test, u_test_unscaled, color='blue', dashes=[2, 2], label='theory')
         plt.plot(time_test, yhat_plus_uhat_test_unscaled, color='blue', label='residual + theory')
         plt.plot(time_test, y_true_test_unscaled, color='g', label='measured')
@@ -275,6 +288,55 @@ class Residual_Model:
         return yhat_plus_uhat_val_unscaled, fig
    
     def test_usecases(self, X_train, y_train, u_train, X_case_1, y_case_1, u_case_1, X_case_2, y_case_2, u_case_2, X_case_3, y_case_3, u_case_3, scalers_train):
+        """Tests the LSTM model on validation and test data.
+
+        For visualization purposes, a table with several metrics for training, validation and test data 
+        will be printed in adition to plots of the validation and test profiles used.
+ 
+        Args:
+            X_train (numpy.ndarray):
+                The training input data used in Model.train()
+                
+            y_train (numpy.ndarray):
+                The training output data used in Model.train()
+
+            u_train (numpy.ndarray):
+                Thevenin model output data for trainig
+            
+            X_case_1 (numpy.ndarray): 
+                Use case 1 input data
+                
+            y_case_1 (numpy.ndarray): 
+                Use case 1 output data
+
+            u_case_1 (numpy.ndarray): 
+                Thevenin model output data for use case 1
+                
+            X_case_2 (numpy.ndarray): 
+                Use case 2 input data
+                
+            y_case_2 (numpy.ndarray): 
+                Use case 2 output data
+                
+            u_case_2 (numpy.ndarray): 
+                Thevenin model output data for use case 2
+                
+            X_case_3 (numpy.ndarray): 
+                Use case 3 input data
+                
+            y_case_3 (numpy.ndarray): 
+                Use case 3 output data
+
+            u_case_3 (numpy.ndarray): 
+                Thevenin model output data for use case 3
+                
+            scalers_train ((sklearn.preprocessing.MinMaxScaler, sklearn.preprocessing.MinMaxScaler)):
+                A tuple of scaler objects used to scale and rescale X and y for training
+                
+        Returns:
+            The matplotlib figure used to plot the visualization is returned. 
+            This is needed so that the plots can be saved at the appropriate location.
+        """
         # --------- predict on training ---------
         time_train = TimeHistory()
         yhat_train = self.model.predict(X_train, callbacks=[time_train], verbose=1)
@@ -349,7 +411,7 @@ class Residual_Model:
         
         fig,_ = plt.subplots(figsize=(20,5))
         plt.subplot(1,3,1)
-        time_case_1 = np.arange(yhat_plus_uhat_case_1_unscaled.shape[0]) * 0.25
+        time_case_1 = np.arange(yhat_plus_uhat_case_1_unscaled.shape[0]*self.params['d_sample'])[::self.params['d_sample']]*0.25
         # plt.plot(time_case_1, u_case_1_unscaled, color='blue', dashes=[2, 2], label='theory')
         plt.plot(time_case_1, yhat_plus_uhat_case_1_unscaled, color='blue', label='residual + theory')
         plt.plot(time_case_1, y_true_case_1_unscaled, color='g', dashes=[2, 2], label='measured')
@@ -359,7 +421,7 @@ class Residual_Model:
         plt.title('Reproduction', fontsize=20)
         plt.legend()
         plt.subplot(1,3,2)
-        time_case_2 = np.arange(yhat_plus_uhat_case_2_unscaled.shape[0]) * 0.25
+        time_case_2 = np.arange(yhat_plus_uhat_case_2_unscaled.shape[0]*self.params['d_sample'])[::self.params['d_sample']]*0.25
         # plt.plot(time_case_2, u_case_2_unscaled, color='blue', dashes=[2, 2], label='theory')
         plt.plot(time_case_2, yhat_plus_uhat_case_2_unscaled, color='blue', label='residual + theory')
         plt.plot(time_case_2, y_true_case_2_unscaled, color='g', dashes=[2, 2], label='measured')
@@ -368,7 +430,7 @@ class Residual_Model:
         plt.title('Abstraction', fontsize=20)
         plt.legend()
         plt.subplot(1,3,3)
-        time_case_3 = np.arange(yhat_plus_uhat_case_3_unscaled.shape[0]) * 0.25
+        time_case_3 = np.arange(yhat_plus_uhat_case_3_unscaled.shape[0]*self.params['d_sample'])[::self.params['d_sample']]*0.25
         # plt.plot(time_case_3, u_case_3_unscaled, color='blue', dashes=[2, 2], label='theory')
         plt.plot(time_case_3, yhat_plus_uhat_case_3_unscaled, color='blue', label='residual + theory')
         plt.plot(time_case_3, y_true_case_3_unscaled, color='g', dashes=[2, 2], label='measured')
@@ -376,6 +438,7 @@ class Residual_Model:
         plt.xlabel('time (s)', fontsize=20)
         plt.title('Generalization', fontsize=20)
         plt.legend()
-        plt.show()        
+        plt.show()
+        
         return fig
         
