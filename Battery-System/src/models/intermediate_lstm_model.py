@@ -1,5 +1,5 @@
 """
-Module containing a class modelling an LSTM network for voltage time series prediciton.
+Module containing a class modelling an LSTM network for voltage time series prediciton using intermediate variables.
 """
 import time
 import numpy as np
@@ -7,39 +7,75 @@ import tensorflow as tf
 import matplotlib.pyplot as plt
 import matplotlib.mlab as mlab
 import sklearn.metrics as metrics
+from tabulate import tabulate
 import tensorflow.python.util.deprecation as deprecation
 # used to hide deprecation warning raised by tensorflow
 deprecation._PRINT_DEPRECATION_WARNINGS = False 
-
 from tensorflow.keras import layers
 from tensorflow.keras import backend
 from tensorflow.keras import losses
 from tensorflow.keras import callbacks
-from tabulate import tabulate
-from ..data.data_preprocessing import preprocess_raw_data
+
 import src.models.thevenin_model as thevenin
 
 # ---------------------------------------------------- Callbacks -------------------------------------------------
 class TimeHistory(callbacks.Callback):
+    """Callback handler for keras to monitor the training time.
+
+    Attributes:
+        times (list): 
+            A list of time step values for each consecutive training epoch
+            
+        epoch_time_start (double): 
+            Variable to store the start time of an epoch to later compute the epoch training time
+    """
     def on_train_begin(self, logs={}):
+        """Initialize times array at the beginning of training.
+        Called every time a training starts.
+        """
         self.times = []
 
     def on_epoch_begin(self, epoch, logs={}):
+        """Starts the timer at the begining of an epoch.
+        Called every time a new training epoch starts.
+        """
         self.epoch_time_start = time.time()
 
     def on_epoch_end(self, epoch, logs={}):
+        """Computes the training time needed in this epoch and adds it to the time array.
+        Called every time a training epoch finishes.
+        """
         self.times.append(time.time() - self.epoch_time_start)
         
     def on_predict_begin(self, logs={}):
+        """Resets the times array and starts a new epoch to later compute the time needed for a prediction. 
+        Called every time a prediction starts.
+        """
         self.times = []
         self.epoch_time_start = time.time()
 
     def on_predict_end(self, logs={}):
+        """Computes the time needed to make a prediction.
+        Called every time a prediction finishes.
+        """
         self.times.append(time.time() - self.epoch_time_start)
 
 # --------------------------------------------- Custom Loss Functions --------------------------------------------
+def soc_constraint(y_true, y_pred, scalers_train):
+    """Computes the custom SOC constraint.
 
-def soc_constraint(inputs, y_true, y_pred, scalers_train):
+    Args:
+        y_true (numpy.ndarray): 
+            The array of ground truth voltage values
+            
+        y_pred (numpy.ndarray): 
+            The array of predicted voltage values
+            
+        scalers_train ((sklearn.preprocessing.MinMaxScaler, sklearn.preprocessing.MinMaxScaler)):
+            A tuple of scaler objects used to scale and rescale X and y for training
+    Returns:
+        The SOC based loss. 
+    """
     losses = []
     
     for i in range(len(y_true)):
@@ -47,14 +83,14 @@ def soc_constraint(inputs, y_true, y_pred, scalers_train):
         z_hat = thevenin.ocv_inverse_exact(
                     scalers_train.inverse_transform(
                         np.array([y_true[i]]).reshape(1, -1))[0][0])
-        # SOC label
+        # SOC_label
         z = thevenin.ocv_inverse_exact(
                     scalers_train.inverse_transform(
                         np.array(
                             [y_pred.numpy()[i][0]]).reshape(1, -1))[0][0])
         
         
-        losses.append(backend.square(z_hat - z).numpy()) # TODO create tensor instead of one loss?
+        losses.append(backend.square(z_hat - z).numpy())
     
     loss = tf.constant(losses, dtype=tf.float32)
 
@@ -71,6 +107,9 @@ def combine_losses(params, scalers_train):
     Args:
         params (dict): 
             A dictionary containing the hyperparameters
+            
+        scalers_train ((sklearn.preprocessing.MinMaxScaler, sklearn.preprocessing.MinMaxScaler)):
+            A tuple of scaler objects used to scale and rescale X and y for training
     Returns: 
         The combined loss value.
     """
@@ -78,7 +117,6 @@ def combine_losses(params, scalers_train):
     def loss(data, y_pred):
         y_true = data[:,0]
         y_true = np.reshape(y_true, (-1, 1))
-        inputs = data[:,1]
             
         accumulated_loss = 0
         loss_functions = params['loss_funcs']
@@ -87,18 +125,15 @@ def combine_losses(params, scalers_train):
         if 'mse' in loss_functions:
             accumulated_loss += params['lambda_mse'] * losses.mean_squared_error(y_true, y_pred)
         if 'soc' in loss_functions:
-            accumulated_loss += params['lambda_soc'] * soc_constraint(inputs, y_true, y_pred, scalers_train)
+            accumulated_loss += params['lambda_soc'] * soc_constraint(y_true, y_pred, scalers_train)
             
         return accumulated_loss
     return loss
 
 # --------------------------------------------- LSTM Model  ------------------------------------------------------
-
 class Model: 
-    """Responsible for managing the neural network architecture which is used to predict voltage time series data.
-
-    Model is suited to work with the FOBSS data set (http://dbis.ipd.kit.edu/download/FOBSS_final.pdf) but can also be used with
-    other kinds of current and voltage data.
+    """Responsible for managing the neural network architecture using intermediate variables 
+    and custom loss functions for training. 
 
     Attributes:
         model (tensorflow.python.keras.engine.sequential.Sequential): 
@@ -109,8 +144,10 @@ class Model:
             
         history (tensorflow.python.keras.callbacks.History): 
             A report of the training procedure
+        
+        scalers_train ((sklearn.preprocessing.MinMaxScaler, sklearn.preprocessing.MinMaxScaler)):
+            A tuple of scaler objects used to scale and rescale X and y for training
     """
-   
     def initialize(self, params, scalers_train):
         """Initializes the LSTM model.
 
@@ -119,11 +156,13 @@ class Model:
         Args:
             params (dict): 
                 A dictionary containing the hyperparameters
+
+            scalers_train ((sklearn.preprocessing.MinMaxScaler, sklearn.preprocessing.MinMaxScaler)):
+                A tuple of scaler objects used to scale and rescale X and y for training
         """
         # --------- create model ---------
         model = tf.keras.Sequential(name='Black_Box_LSTM')
         # layer 1
-#         model.add(layers.LSTM(units=params['n_lstm_units_1'], batch_input_shape=(32, params['n_steps'], params['n_features']), stateful=True, return_sequences=True))
         model.add(layers.LSTM(units=params['n_lstm_units_1'], input_shape=(params['n_steps'], params['n_features']), return_sequences=True))
         model.add(layers.LeakyReLU(alpha=params['alpha_1'])) # (profiles, None, 3)
         # layer 2
@@ -133,7 +172,7 @@ class Model:
         model.add(layers.Dense(1, activation=params['activation_output_layer']))
     
         # --------- compile model ---------
-        custom_loss = combine_losses(params, scalers_train)
+        custom_loss = combine_losses(params, scalers_train) # define custom loss
         
         model.compile(run_eagerly=True, optimizer=params['optimizer'], loss=custom_loss, metrics=['mse', params['metric']])
         
@@ -142,7 +181,7 @@ class Model:
         self.params = params
         return None
     
-    def train(self, X, y, scalers):
+    def train(self, X, y, scalers_train):
         """Trains the LSTM model.
 
         For visualization purposes, the MSE and MAE over all training epochs will be ploted.
@@ -154,11 +193,13 @@ class Model:
             y (numpy.ndarray): 
                 The groundtruth output data
             
-            scalers (tuple):
-                The scaler objects which were used to scale X and y
+            scalers_train ((sklearn.preprocessing.MinMaxScaler, sklearn.preprocessing.MinMaxScaler)):
+                A tuple of scaler objects used to scale and rescale X and y for training
+                
         Returns:
-            The time_callback which is used to measure the time needed to train the model. In adition the matplotlib 
-            figure used to plot the visualization. This is needed so that the plots can be saved at the appropriate location.
+            The time_callback which is used to measure the time needed to train the model. 
+            In adition the matplotlib figure used to plot the visualization. 
+            This is needed so that the plots can be saved at the appropriate location.
         """
         # --------- train model ---------
         time_callback = TimeHistory()
@@ -183,7 +224,7 @@ class Model:
         
         # save parameters
         self.history = history
-        self.scalers_train = scalers
+        self.scalers_train = scalers_train
         return time_callback, fig
 
 
@@ -201,23 +242,24 @@ class Model:
                 The training output data used in Model.train()
             
             X_validation (numpy.ndarray): 
-                validation input data
+                Validation input data
                 
             y_validation (numpy.ndarray): 
-                validation output data
+                Validation output data
                 
             X_test (numpy.ndarray): 
-                test input data
+                Test input data
                 
             y_test (numpy.ndarray): 
-                test output data
+                Test output data
 
-            scalers (tuple):
-                The scaler objects which were used to scale X and y in training, validation and test data
+            scalers_train ((sklearn.preprocessing.MinMaxScaler, sklearn.preprocessing.MinMaxScaler)):
+                A tuple of scaler objects used to scale and rescale X and y for training
                 
         Returns:
-            A Tuple containing the predicted train, validation and test profiles. In adition the matplotlib figure 
-            used to plot the visualization is returned. This is needed so that the plots can be saved at the appropriate location.
+            The predicted train, validation and test profiles. 
+            In adition the matplotlib figure used to plot the visualization is returned. 
+            This is needed so that the plots can be saved at the appropriate location.
         """
         # --------- predict on data ---------
         time_train = TimeHistory()
@@ -251,7 +293,7 @@ class Model:
         validation_max = metrics.max_error(y_validation_unscaled, yhat_validation_unscaled)
         test_max = metrics.max_error(y_test_unscaled, yhat_test_unscaled)
         
-        # --------- visualize results ---------
+        # --------- print table ---------
         print('###########################################################')
         error_table = tabulate([['MSE (\u03BCV)', round(train_mse, 7) * 1000000, round(validation_mse, 7) * 1000000, round(test_mse, 7) * 1000000], 
           ['MAE (V)', round(train_mae, 4), round(validation_mae, 4), round(test_mae, 4)], 
@@ -259,45 +301,84 @@ class Model:
         print(error_table)
         print('###########################################################')        
         
+        # --------- plot results ---------
         fig, _ = plt.subplots(figsize=(14,10))
         plt.subplot(2,2,1)
-        time_val = np.arange(yhat_validation_unscaled.shape[0]) * 0.25
+        time_val = np.arange(yhat_validation_unscaled.shape[0]*self.params['d_sample'])[::self.params['d_sample']]*0.25
         plt.plot(time_val, yhat_validation_unscaled, color='blue', label='predicted')
         plt.plot(time_val, y_validation_unscaled, color='g', dashes=[2, 2], label='measured')
         plt.fill_between(time_val, yhat_validation_unscaled.flatten(), y_validation_unscaled.flatten(), label='delta', color='lightgrey')
         plt.ylabel('voltage (V)', fontsize=20)
-        plt.title('Validation Data', fontsize=20)
+        plt.title('Validation', fontsize=20)
         plt.legend()
         axe = plt.subplot(2,2,3)
         delta_val = np.abs(yhat_validation_unscaled - y_validation_unscaled)
-        plt.bar(time_val, delta_val.flatten(), width=2, label='delta', color='lightgrey')   
-        axe.set_ylim([0,0.03])
-        plt.ylabel('voltage (V)', fontsize=20)
+        plt.bar(time_val, delta_val.flatten() * 100, width=2, label='delta', color='lightgrey')   
+        axe.set_ylim([0,3])
+        plt.ylabel('voltage (mV)', fontsize=20)
         plt.xlabel('time (s)', fontsize=20)
         plt.title('Absolute Error', fontsize=20)
         plt.legend()
         plt.subplot(2,2,2)
-        time_test = np.arange(yhat_test_unscaled.shape[0]) * 0.25
+        time_test = np.arange(yhat_test_unscaled.shape[0]*self.params['d_sample'])[::self.params['d_sample']]*0.25
         plt.plot(time_test, yhat_test_unscaled, color='blue', label='predicted')
         plt.plot(time_test, y_test_unscaled, color='g', dashes=[2, 2], label='measured')
         plt.fill_between(time_test, yhat_test_unscaled.flatten(), y_test_unscaled.flatten(), label='delta', color='lightgrey')
         plt.ylabel('voltage (V)', fontsize=20)
-        plt.title('Test Data', fontsize=20)
+        plt.title('Test', fontsize=20)
         plt.legend()
         axe = plt.subplot(2,2,4)
         delta_test = np.abs(yhat_test_unscaled - y_test_unscaled)
-        plt.bar(time_test, delta_test.flatten(), width=2, label='delta', color='lightgrey')           
-        axe.set_ylim([0,0.03])
-        plt.ylabel('voltage (V)', fontsize=20)
+        plt.bar(time_test, delta_test.flatten() * 100, width=2, label='delta', color='lightgrey')           
+        axe.set_ylim([0,3])
+        plt.ylabel('voltage (mV)', fontsize=20)
         plt.xlabel('time (s)', fontsize=20)
         plt.title('Absolute Error', fontsize=20)
         plt.legend()
         plt.show()
         
-        return yhat_train_unscaled, yhat_validation_unscaled, yhat_test_unscaled, delta_test, time, fig
+        return yhat_train_unscaled, yhat_validation_unscaled, yhat_test_unscaled, fig
 
 
     def test_usecases(self, X_train, y_train, X_case_1, y_case_1, X_case_2, y_case_2, X_case_3, y_case_3, scalers_train):
+        """Tests the LSTM model on validation and test data.
+    
+        For visualization purposes, a table with several metrics for training, validation and test data 
+        will be printed in adition to plots of the validation and test profiles used.
+ 
+        Args:
+            X_train (numpy.ndarray):
+                The training input data used in Model.train()
+                
+            y_train (numpy.ndarray):
+                The training output data used in Model.train()
+            
+            X_case_1 (numpy.ndarray): 
+                Use case 1 input data
+                
+            y_case_1 (numpy.ndarray): 
+                Use case 1 output data
+                
+            X_case_2 (numpy.ndarray): 
+                Use case 2 input data
+                
+            y_case_2 (numpy.ndarray): 
+                Use case 2 output data
+                
+            X_case_3 (numpy.ndarray): 
+                Use case 3 input data
+                
+            y_case_3 (numpy.ndarray): 
+                Use case 3 output data
+                
+            scalers_train ((sklearn.preprocessing.MinMaxScaler, sklearn.preprocessing.MinMaxScaler)):
+                A tuple of scaler objects used to scale and rescale X and y for training
+                
+        Returns:
+            The predicted train, use case 1, use case 2 and use case 3 profiles. 
+            In adition the matplotlib figure used to plot the visualization is returned. 
+            This is needed so that the plots can be saved at the appropriate location.
+        """
         # --------- predict on data ---------
         time_train = TimeHistory()
         yhat_train = self.model.predict(X_train, callbacks=[time_train], verbose=1)
@@ -339,17 +420,18 @@ class Model:
         case_2_max = metrics.max_error(y_case_2_unscaled, yhat_case_2_unscaled)
         case_3_max = metrics.max_error(y_case_3_unscaled, yhat_case_3_unscaled)
         
-        # --------- visualize results ---------
+        # --------- print table ---------
         print('##############################################################')
-        error_table = tabulate([['MSE (\u03BCV)', round(train_mse, 7) * 1000000, round(case_1_mse, 7) * 1000000, round(case_2_mse, 7) * 1000000, round(case_3_mse, 7) * 1000000], 
-          ['MAE (V)', round(train_mae, 4), round(case_1_mae, 4), round(case_2_mae, 4), round(case_3_mae, 4)], 
+        error_table = tabulate([['MSE  (\u03BCV)', round(train_mse, 7) * 1000000, round(case_1_mse, 7) * 1000000, round(case_2_mse, 7) * 1000000, round(case_3_mse, 7) * 1000000], 
+          ['MAE  (V)', round(train_mae, 4), round(case_1_mae, 4), round(case_2_mae, 4), round(case_3_mae, 4)], 
           ['MaxE (V)', round(train_max, 4), round(case_1_max, 4), round(case_2_max, 4), round(case_3_max, 4)]], headers=['Training', 'Use Case 1', 'Use Case 2', 'Use Case 3'])
         print(error_table)
         print('##############################################################')
         
+        # --------- plot results ---------
         fig,_ = plt.subplots(figsize=(20,5))
         plt.subplot(1,3,1)
-        time_case_1 = np.arange(yhat_case_1_unscaled.shape[0]) * 0.25
+        time_case_1 = np.arange(yhat_case_1_unscaled.shape[0]*self.params['d_sample'])[::self.params['d_sample']]*0.25
         plt.plot(time_case_1, yhat_case_1_unscaled, color='blue', label='predicted')
         plt.plot(time_case_1, y_case_1_unscaled, color='g', dashes=[2, 2], label='measured')
         plt.fill_between(time_case_1, yhat_case_1_unscaled.flatten(), y_case_1_unscaled.flatten(), label='delta', color='lightgrey')
@@ -358,7 +440,7 @@ class Model:
         plt.title('Reproduction', fontsize=20)
         plt.legend()
         plt.subplot(1,3,2)
-        time_case_2 = np.arange(yhat_case_2_unscaled.shape[0]) * 0.25
+        time_case_2 = np.arange(yhat_case_2_unscaled.shape[0]*self.params['d_sample'])[::self.params['d_sample']]*0.25
         plt.plot(time_case_2, yhat_case_2_unscaled, color='blue', label='predicted')
         plt.plot(time_case_2, y_case_2_unscaled, color='g', dashes=[2, 2], label='measured')
         plt.fill_between(time_case_2, yhat_case_2_unscaled.flatten(), y_case_2_unscaled.flatten(), label='delta', color='lightgrey')
@@ -366,7 +448,7 @@ class Model:
         plt.title('Abstraction', fontsize=20)
         plt.legend()
         plt.subplot(1,3,3)
-        time_case_3 = np.arange(yhat_case_3_unscaled.shape[0]) * 0.25
+        time_case_3 = np.arange(yhat_case_3_unscaled.shape[0]*self.params['d_sample'])[::self.params['d_sample']]*0.25
         plt.plot(time_case_3, yhat_case_3_unscaled, color='blue', label='predicted')
         plt.plot(time_case_3, y_case_3_unscaled, color='g', dashes=[2, 2], label='measured')
         plt.fill_between(time_case_3, yhat_case_3_unscaled.flatten(), y_case_3_unscaled.flatten(), label='delta', color='lightgrey')
@@ -375,3 +457,4 @@ class Model:
         plt.legend()
         plt.show()
         
+        return train_mse, case_1_mse, case_2_mse, case_3_mse, fig
