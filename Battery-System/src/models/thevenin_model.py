@@ -207,7 +207,7 @@ def identify_instant_volt_change(train_current, train_voltage):
     # ------------- delta_v_0 -------------
     # compute delta
     time_max_volt_change = train_voltage[max_volt_change_index, 0]
-    print('Time of Instantaneuos Voltage Change (s):', round(time_max_volt_change, 2))
+    print('Time of Instantaneous Voltage Change (s):', round(time_max_volt_change, 2))
     delta_v_0 = abs(train_voltage_profile[low_index_volt] - train_voltage_profile[high_index_volt])
     print('delta_v_0 (V):', round(delta_v_0, 5))
     print('---------------------------------------------------')
@@ -219,7 +219,7 @@ def identify_instant_volt_change(train_current, train_voltage):
     else:
         max_cur_change = np.argmax(cur_grad)
 
-    print('Time of Instantaneuos Current Change (s):', round(train_current[max_cur_change, 0], 2))
+    print('Time of Instantaneous Current Change (s):', round(train_current[max_cur_change, 0], 2))
 
     # compute delta
     delta_i = abs(train_current_profile[low_index_cur] - train_current_profile[high_index_cur])
@@ -239,7 +239,7 @@ def identify_instant_volt_change(train_current, train_voltage):
     plt.plot(train_voltage_time, train_voltage_profile)
     plt.hlines(train_voltage_profile[low_index_volt], train_voltage[low_index_volt,0], train_voltage[-1,0], color='red', linestyles='dashed')
     plt.hlines(train_voltage_profile[high_index_volt], train_voltage[high_index_volt,0], train_voltage[-1,0], color='red', linestyles='dashed')
-    plt.title('Instantanous Voltage Change', fontsize=20)
+    plt.title('Instantaneous Voltage Change', fontsize=20)
     plt.xlabel('time (s)', fontsize=20)
     plt.ylabel('voltage (V)', fontsize=20)
     plt.show()
@@ -788,7 +788,7 @@ def vis_predict(profile, r_0, r_1, c_1, params):
         The predicted voltage profile.
     """
     # ------------- load data -------------
-    test_current, test_voltage = load_profile(profile, params, cutoff_time = 700)
+    test_current, test_voltage = load_profile(profile, params)
     test_voltage_time = test_voltage[:,0]
     test_voltage_profile = test_voltage[:,1]
     test_current_time = test_current[:,0]
@@ -847,9 +847,8 @@ def vis_predict(profile, r_0, r_1, c_1, params):
     print('MSE(\u03BCV):', round(round(metrics.mean_squared_error(test_voltage_profile, v), 7) * 1000000, 2))
 
     # save plots and predicted sequences
-    MODEL_ID = str(np.random.randint(10000))
-    print('Saved plot to:', '../../../reports/figures/theory_baseline-' + str(MODEL_ID) + '-' + profile + '-test_profile.png')
-    fig.savefig('../../../reports/figures/theory_baseline-' + str(MODEL_ID) + '-' + profile + '-test_profile.png')
+    print('Saved plot to:', '../../../reports/figures/theory_baseline-' + str(params['model_id']) + '-' + profile + '-test_profile.png')
+    fig.savefig('../../../reports/figures/theory_baseline-' + str(params['model_id']) + '-' + profile + '-test_profile.png')
     return v
     
 def predict(profile, r_0, r_1, c_1, params):
@@ -877,7 +876,7 @@ def predict(profile, r_0, r_1, c_1, params):
         The predicted voltage profile.
     """
     # ------------- load data -------------
-    test_current, test_voltage = load_profile(profile, params, cutoff_time = 700)
+    test_current, test_voltage = load_profile(profile, params)
     test_voltage_time = test_voltage[:,0]
     test_voltage_profile = test_voltage[:,1]
     test_current_time = test_current[:,0]
@@ -1039,6 +1038,6 @@ def vis_predict_usecases(profiles, r_0, r_1, c_1, params):
     
     # save plots and predicted sequences
     MODEL_ID = str(np.random.randint(10000))
-    print('Saved plot to:', '../../../reports/figures/theory_baseline-' + str(MODEL_ID) + '-' + profile + '-test_profile.png')
-    fig.savefig('../../../reports/figures/theory_baseline-' + str(MODEL_ID) + '-' + profile + '-test_profile.png')
+    print('Saved plot to:', '../../../reports/figures/theory_baseline-' + str(params['model_id']) + '-use_cases.png')
+    fig.savefig('../../../reports/figures/theory_baseline-' + str(params['model_id']) + '-use_cases.png')
     return v
