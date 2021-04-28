@@ -4,7 +4,6 @@ Module containing different utility functions used for preprocessing time series
 import numpy as np
 from sklearn.preprocessing import MinMaxScaler
 from scipy import ndimage 
-from deprecated import deprecated
 import matplotlib.pyplot as plt
 
 import src.models.thevenin_model as thevenin
@@ -13,7 +12,7 @@ import src.models.thevenin_model as thevenin
 def load_current_raw_data(profile):
     """Loads the current raw data.
 
-    This method will extract raw data provided by the inverter current sensor.
+    This method will extract raw data provided by the battery current sensor.
 
     Args:
         profile (str):
@@ -22,8 +21,8 @@ def load_current_raw_data(profile):
     Returns:
         A numpy array containing the requested raw data.
     """
-    current_data = np.loadtxt('../../../data/raw/fobss_data/data/' + profile + '/inverter/Inverter_Current.csv', delimiter=';')
-    current_data = current_data[:,1] # only the first column includes necessary information
+    current_data = np.loadtxt('../../../data/raw/fobss_data/data/' + profile + '/battery/Battery_Current.csv', delimiter=';') # TODO: propably a terrible idea
+    current_data = -current_data[:,1] # only the first column includes necessary information
     return current_data
 
 
@@ -54,10 +53,10 @@ def subsequences(sequence_X, sequence_y, n_steps):
     It is recommended to align the sequences first with util.align().
  
     Args:
-        sequence_1 (numpy.ndarray): 
+        sequence_X (numpy.ndarray): 
             The first sequence which gets converted into multiple subarrays of length: n_steps
             
-        sequence_2 (numpy.ndarray): 
+        sequence_y (numpy.ndarray): 
             The second sequence, each n_steps'th element will be part of the output array
             
         n_steps (int): 
@@ -70,7 +69,7 @@ def subsequences(sequence_X, sequence_y, n_steps):
         y.shape = (sequence_y.shape[0] - n_steps, 1)
 
     Raises:
-        Exception: If n_steps exceeds the length of sequence_X no subsequences can be created
+        Exception: If n_steps exceeds the length of sequence_X no subsequences can be created.
     """
     if n_steps > len(sequence_X):
         raise Exception('data_preprocessing.subsequences: n_steps should not exceed the sequence length')
@@ -125,7 +124,8 @@ def smooth(sequence, sigma):
 def align(sequence_1, sequence_2):
     """Aligns two sequences.
 
-    In this context this means subsampling the first array so that it afterwards has the same size as the second array.
+    In this context this means subsampling the first array so that it afterwards has the 
+    same size as the second array.
     
     Args: 
         sequence_1 (numpy.ndarray): 
@@ -135,10 +135,11 @@ def align(sequence_1, sequence_2):
             The array to be aligned to
 
     Returns:
-        The algined array
+        The aligned array
         
     Raises:
-        Exception: If the array which is being aligned is of smaller size than the one which it is supposed to be aligned to.
+        Exception: If the array which is being aligned is of smaller size than the one 
+        which it is supposed to be aligned to.
     """
     if len(sequence_1) < len(sequence_2):
         raise Exception('data_preprocessing.align: missmatch of sequence lengths')
@@ -153,29 +154,20 @@ def align(sequence_1, sequence_2):
     return aligned_sequence
 
 
-def preprocess_raw_data(params, sequence):
-    """Preprocesses the raw sequence by subsamling, smoothing and scaling the data.
+def preprocess_raw_current(params, sequence):
+    """Preprocesses the raw current by subsamling, smoothing and scaling the data.
     Args:
         params (dict): 
-            Dictionary containing the keys 's_sample' and 'gauss_sigma' which represent the input parameter for preprocessing
+            Dictionary containing the keys 'd_sample', 'gauss_sigma', 'feature_range_cur_low',
+            'feature_range_cur_high', 'boundary_cur_low', 'boundary_cur_high'
             
         sequence (numpy.ndarray): 
             The sequence to be preprocessed
         
     Returns:
-        A tuple of 2 values. The preprocessed sequence and the scaler object (used for retransforming after training)
+        A tuple of 2 values. The preprocessed sequence and the scaler object 
+        (used for retransforming after training).
     """
-    sequence = subsample(sequence, params['d_sample'])
-    sequence = smooth(sequence, params['gauss_sigma'])
-    sequence = np.reshape(sequence, (-1, 1))
-    
-    scaler = MinMaxScaler(feature_range = (params['feature_range_low'], params['feature_range_high']))
-    scaler.fit(sequence)
-    sequence = scaler.transform(sequence)
-    return sequence, scaler
-
-
-def preprocess_raw_current(params, sequence):
     sequence = subsample(sequence, params['d_sample'])
     sequence = smooth(sequence, params['gauss_sigma'])
     sequence = np.reshape(sequence, (-1, 1))
@@ -190,22 +182,20 @@ def preprocess_raw_current(params, sequence):
     return sequence, scaler
 
 
-def preprocess_raw_acc_cur(params, sequence):
-    sequence = subsample(sequence, params['d_sample'])
-    sequence = smooth(sequence, params['gauss_sigma'])
-    sequence = np.reshape(sequence, (-1, 1))
-    
-    scaler = MinMaxScaler(feature_range=(params['feature_range_acc_cur_low'], params['feature_range_acc_cur_high']))
-    
-    boundaries = [params['boundary_acc_cur_low'], params['boundary_acc_cur_high']]
-    boundaries = np.reshape(boundaries, (-1, 1))
-    scaler.fit(boundaries)
-    
-    sequence = scaler.transform(sequence)
-    return sequence, scaler
-
-
 def preprocess_raw_charge(params, sequence):
+    """Preprocesses the raw charge by subsamling, smoothing and scaling the data.
+    Args:
+        params (dict): 
+            Dictionary containing the keys 'd_sample', 'gauss_sigma', 'feature_range_charge_low',
+            'feature_range_charge_high', 'boundary_charge_low', 'boundary_charge_high'
+            
+        sequence (numpy.ndarray): 
+            The sequence to be preprocessed
+        
+    Returns:
+        A tuple of 2 values. The preprocessed sequence and the scaler object 
+        (used for retransforming after training).
+    """
     sequence = np.reshape(sequence, (-1, 1))
     sequence = subsample(sequence, params['d_sample'])
 
@@ -220,6 +210,19 @@ def preprocess_raw_charge(params, sequence):
 
 
 def preprocess_raw_voltage(params, sequence):
+    """Preprocesses the raw voltage by subsamling, smoothing and scaling the data.
+    Args:
+        params (dict): 
+            Dictionary containing the keys 'd_sample', 'gauss_sigma', 'feature_range_volt_low',
+            'feature_range_volt_high', 'boundary_voltage_low', 'boundary_voltage_high'
+            
+        sequence (numpy.ndarray): 
+            The sequence to be preprocessed
+        
+    Returns:
+        A tuple of 2 values. The preprocessed sequence and the scaler object 
+        (used for retransforming after training).
+    """
     sequence = subsample(sequence, params['d_sample'])
     sequence = smooth(sequence, params['gauss_sigma'])
     sequence = np.reshape(sequence, (-1, 1))
@@ -234,22 +237,21 @@ def preprocess_raw_voltage(params, sequence):
     
     return sequence, scaler
 
-def preprocess_delta_voltage(params, sequence):
-    sequence = subsample(sequence, params['d_sample'])
-    sequence = smooth(sequence, params['gauss_sigma'])
-    sequence = np.reshape(sequence, (-1, 1))
-    
-    scaler = MinMaxScaler(feature_range=(params['feature_range_delta_low'], params['feature_range_delta_high']))
-    
-    boundaries = [params['boundary_delta_low'], params['boundary_delta_high']]
-    boundaries = np.reshape(boundaries, (-1, 1))
-    scaler.fit(boundaries)
-    
-    sequence = scaler.transform(sequence)
-    
-    return sequence, scaler
 
 def preprocess_raw_thevenin(params, sequence):
+    """Preprocesses the raw thevenin voltage by smoothing and scaling the data.
+    Args:
+        params (dict): 
+            Dictionary containing the keys 'd_sample', 'gauss_sigma', 'feature_range_volt_low',
+            'feature_range_volt_high', 'boundary_voltage_low', 'boundary_voltage_high'
+            
+        sequence (numpy.ndarray): 
+            The sequence to be preprocessed
+        
+    Returns:
+        A tuple of 2 values. The preprocessed sequence and the scaler object 
+        (used for retransforming after training).
+    """
     sequence = smooth(sequence, params['gauss_sigma'])
     sequence = np.reshape(sequence, (-1, 1))
     
@@ -263,81 +265,80 @@ def preprocess_raw_thevenin(params, sequence):
     
     return sequence, scaler
 
-# ---------------------------------------- Prediction Thevenin Model -------------------------------------------------
+# -------------------------------------- Prediction Thevenin Model -----------------------------------------------
 def predict_thevenin(params, profile):
+    """Predicts the voltage using the Thevenin model.
+    Args:
+        params (dict): 
+            Dictionary containing the key 'theory_model'
+            
+        profile (str): 
+            The profile to be predicted
+        
+    Returns:
+        The voltage prediction of the provided profile using the parametrized Thevenin Model.
+    """
     thevenin_params = np.load('../../../models/T/theory_baseline-' + str(params['theory_model']) + '-parameters.npy', allow_pickle=True)
     thevenin_params = thevenin_params.item()
 
     thevenin_hyperparams = np.load('../../../models/T/theory_baseline-' + str(params['theory_model']) + '-hyperparameters.npy', allow_pickle=True)
     thevenin_hyperparams = thevenin_hyperparams.item()
 
+    update_params = {
+        'd_sample': params['d_sample']
+    }
+    thevenin_hyperparams.update(update_params)
+    
     theory_raw = thevenin.predict(profile, thevenin_params['r_0'], thevenin_params['r_1'], thevenin_params['c_1'], thevenin_hyperparams)
     
     return theory_raw
 
 # ---------------------------------------- Prepare Network Input -------------------------------------------------
-# def prepare_data(params, profiles, slave, cell):
-#     """Prepares the requested data to be suitable for the network.
 
-#     Args:
-#         params (dict): 
-#             Dictionary containing the keys 's_sample', 'gauss_sigma', 'n_steps'
+def prepare_thevenin_pred(params, profiles):
+    """Predicts multiple voltage profiles using the Thevenin Model.
+    Args:
+        params (dict): 
+            Dictionary containing the key 'theory_model'
             
-#         profiles (list): 
-#             A list of all FOBSS profiles which should be used
-            
-#         slave (int): 
-#             The battery slave (or stack)
+        profiles (list): 
+            The profiles to be predicted
         
-#         cell (int): 
-#             The battery cell 
+    Returns:
+        The voltage prediction of the provided profiles using the parametrized Thevenin Model.
+    """
+    i = 0
+    for profile in profiles:
 
-#     Returns:
-#         A tuple containing 3 values. The prepared input X, the prepared output/label y and the used scalers.
-#     """
-#     i = 0
-    
-#     for profile in profiles:
-#         # load data
-#         current_raw = load_current_raw_data(profile)
-#         current_cum = np.cumsum(current_raw)
-#         current_cum = current_cum / np.max(np.abs(current_cum))
-#         voltage_raw = load_voltage_raw_data(profile, slave, cell)
+        if (i == 0):
+            uhat = predict_thevenin(params, profile)
+        else:
+            uhat = np.append(uhat, predict_thevenin(params, profile), axis=0)
+        i += 1
 
-#         # preprocess data
-#         current_preprocessed, _ = preprocess_raw_current(params, current_raw)    
-#         current_cum_preprocessed, _ = preprocess_raw_acc_cur(params, current_cum)
-#         voltage_preprocessed, scaler_volt = preprocess_raw_voltage(params, voltage_raw)
+    uhat, _ = preprocess_raw_voltage(params, uhat)
+    return uhat
 
-#         # align current sequence to voltage if sample frequency differs
-#         if voltage_preprocessed.shape[0] != current_preprocessed.shape[0]:
-#             current_preprocessed = align(current_preprocessed, voltage_preprocessed)
-#             current_cum_preprocessed = align(current_cum_preprocessed, voltage_preprocessed)
-
-#         # create input features
-#         profile_X1, profile_y = subsequences(current_preprocessed, voltage_preprocessed, params['n_steps'])
-#         profile_y = np.reshape(profile_y, (-1, 1))
-#         profile_X1 = profile_X1.reshape(profile_X1.shape[0], profile_X1.shape[1], 1)
-
-#         profile_X2, _ = subsequences(current_cum_preprocessed, voltage_preprocessed, params['n_steps'])
-#         profile_X2 = profile_X2.reshape(profile_X2.shape[0], profile_X2.shape[1], 1)
-
-#         profile_X = np.append(profile_X1, profile_X2, axis=2)
-
-#         # append for multiple profiles
-#         if (i == 0):
-#             X = profile_X
-#             y = profile_y
-#         else:
-#             X = np.append(X, profile_X, axis=0)
-#             y = np.append(y, profile_y, axis=0)
-#         i += 1
-    
-#     print('Input:', X.shape, ', Output/Label:', y.shape)
-#     return X, y, scaler_volt
-
-
+# ---------------------------------------- Data Baseline -------------------------------------------------
 def prepare_current_input(params, profiles, slave, cell):
+    """Prepares the current data to be suitable for the network.
+
+    Args:
+        params (dict): 
+            Dictionary containing the appropriate keys for preprocessing
+            
+        profiles (list): 
+            A list of all FOBSS profiles which should be used
+            
+        slave (int): 
+            The battery slave (or stack)
+        
+        cell (int): 
+            The battery cell 
+
+    Returns:
+        A tuple containing 3 values. The prepared input X, the prepared output/label y and the used scalers.
+    """
     i = 0
     
     for profile in profiles:
@@ -370,8 +371,26 @@ def prepare_current_input(params, profiles, slave, cell):
     print('Input:', X.shape, ' Output/Label:', y.shape)
     return X, y, scaler_volt
 
+# ---------------------------------------- Feature Engineering -------------------------------------------------
+def prepare_feature_engineering_input(params, profiles, slave, cell):
+    """Prepares the feature engineering input data to be suitable for the network.
 
-def prepare_current_charge_input(params, profiles, slave, cell):
+    Args:
+        params (dict): 
+            Dictionary containing the appropriate keys for preprocessing
+            
+        profiles (list): 
+            A list of all FOBSS profiles which should be used
+            
+        slave (int): 
+            The battery slave (or stack)
+        
+        cell (int): 
+            The battery cell 
+
+    Returns:
+        A tuple containing 3 values. The prepared input X, the prepared output/label y and the used scalers.
+    """
     i = 0
     
     for profile in profiles:
@@ -406,9 +425,6 @@ def prepare_current_charge_input(params, profiles, slave, cell):
 
         profile_X = np.append(profile_X1, profile_X2, axis=2)
         
-        # ---
-        # ---
-        
         # append for multiple profiles
         if (i == 0):
             X = profile_X
@@ -421,8 +437,27 @@ def prepare_current_charge_input(params, profiles, slave, cell):
     print('Input:', X.shape, ' Output/Label:', y.shape)
     return X, y, scaler_volt
 
+# --------------------------------------- Intermediate Variables ------------------------------------------------
 def prepare_intermediate_input(params, profiles, slave, cell):
-    i = 0
+    """Prepares the intermediate variables input data to be suitable for the network.
+
+    Args:
+        params (dict): 
+            Dictionary containing the appropriate keys for preprocessing
+            
+        profiles (list): 
+            A list of all FOBSS profiles which should be used
+            
+        slave (int): 
+            The battery slave (or stack)
+        
+        cell (int): 
+            The battery cell 
+
+    Returns:
+        A tuple containing 3 values. The prepared input X, the prepared output/label y and the used scalers.
+    """
+    i = 0 
     
     for profile in profiles:
         # load data
@@ -457,7 +492,6 @@ def prepare_intermediate_input(params, profiles, slave, cell):
         profile_X = np.append(profile_X1, profile_X2, axis=2)
         profile_y = np.append(profile_y, current_preprocessed, axis=1) 
         
-
         # append for multiple profiles
         if (i == 0):
             X = profile_X
@@ -470,191 +504,26 @@ def prepare_intermediate_input(params, profiles, slave, cell):
     print('Input:', X.shape, ' Output/Label:', y.shape)
     return X, y, scaler_volt
 
-
-def prepare_thevenin_input(params, profiles, slave, cell):
-    i = 0
-    
-    for profile in profiles:
-        # load data
-        current_raw = load_current_raw_data(profile)
-        voltage_raw = load_voltage_raw_data(profile, slave, cell)
-        
-        # --- SOC ---
-        _, _, _, _, ocv_curve_exact_lin = thevenin.get_SOC_values(profile, params)
-        v_0 = voltage_raw[0]
-        z_t0 = thevenin.ocv_inverse_simple(v_0, ocv_curve_exact_lin)
-        q = 33.2 # expert knowledge
-        z_class = thevenin.z_wrapper(z_t0, q)
-        
-        ocv = []
-        for j in range(len(current_raw)):
-            i_k = current_raw[j]
-            z_k = z_class.z(-i_k, params['d_t']) # i > 0 on discharge, i < 0 on charge
-            ocv.append(thevenin.ocv_exact_lin(z_k))
-        # --- SOC ---
-
-        # preprocess data
-        current_preprocessed, _ = preprocess_raw_current(params, current_raw)    
-        ocv_preprocessed, _ = preprocess_raw_voltage(params, ocv)
-        voltage_preprocessed, scaler_volt = preprocess_raw_voltage(params, voltage_raw)
-
-        # align current sequence to voltage if sample frequency differs
-        if voltage_preprocessed.shape[0] != current_preprocessed.shape[0]:
-            current_preprocessed = align(current_preprocessed, voltage_preprocessed)
-            ocv_preprocessed = align(ocv_preprocessed, voltage_preprocessed)
-
-        # create input features
-        profile_X1, profile_y = subsequences(current_preprocessed, voltage_preprocessed, params['n_steps'])
-        profile_y = np.reshape(profile_y, (-1, 1))
-        profile_X1 = profile_X1.reshape(profile_X1.shape[0], profile_X1.shape[1], 1)
-        
-        profile_X2, _ = subsequences(ocv_preprocessed, voltage_preprocessed, params['n_steps'])
-        profile_X2 = profile_X2.reshape(profile_X2.shape[0], profile_X2.shape[1], 1)
-        
-        profile_X = np.append(profile_X1, profile_X2, axis=2)
-
-        # append for multiple profiles
-        if (i == 0):
-            X = profile_X
-            y = profile_y
-#             plt.plot(ocv_preprocessed)
-#             plt.plot(profile_y)
-        else:
-            X = np.append(X, profile_X, axis=0)
-            y = np.append(y, profile_y, axis=0)
-        i += 1
-    
-    print('Input:', X.shape, ' Output/Label:', y.shape)
-    return X, y, scaler_volt
-
-def prepare_hybrid_input(params, profiles, slave, cell):
-    i = 0
-    
-    for profile in profiles:
-        # load data
-        current_raw = load_current_raw_data(profile)
-        
-#         charge_raw = []
-#         q_t = 0
-#         for j in range(len(current_raw)):
-#             q_t += current_raw[j] * (params['d_t'] * params['d_sample'])  / 3600
-#             charge_raw.append(q_t)
-        
-        voltage_raw = load_voltage_raw_data(profile, slave, cell)
-        
-        # predict on theory model
-        theory_raw = predict_thevenin(params, profile)
-        
-        # preprocess data
-        current_preprocessed, _ = preprocess_raw_current(params, current_raw)    
-#         charge_preprocessed, _ = preprocess_raw_charge(params, charge_raw)
-        voltage_preprocessed, scaler_volt = preprocess_raw_voltage(params, voltage_raw)
-        theory_preprocessed, _ = preprocess_raw_thevenin(params, theory_raw)
-        
-        # align current sequence to voltage if sample frequency differs
-        if voltage_preprocessed.shape[0] != current_preprocessed.shape[0]:
-            current_preprocessed = align(current_preprocessed, voltage_preprocessed)
-#             charge_preprocessed = align(charge_preprocessed, voltage_preprocessed)
-
-        # create input features
-        profile_X1, profile_y = subsequences(current_preprocessed, voltage_preprocessed, params['n_steps'])
-        profile_y = np.reshape(profile_y, (-1, 1))
-        profile_X1 = profile_X1.reshape(profile_X1.shape[0], profile_X1.shape[1], 1)
-
-#         profile_X2, _ = subsequences(charge_preprocessed, voltage_preprocessed, params['n_steps'])
-#         profile_X2 = profile_X2.reshape(profile_X2.shape[0], profile_X2.shape[1], 1)
-        
-        profile_X3, _ = subsequences(theory_preprocessed, voltage_preprocessed, params['n_steps'])
-        profile_X3 = profile_X3.reshape(profile_X3.shape[0], profile_X3.shape[1], 1)
-        
-        profile_X = np.append(profile_X1, profile_X3, axis=2)
-#         profile_X = np.append(profile_X1, profile_X2, axis=2)
-#         profile_X = np.append(profile_X, profile_X3, axis=2)
-
-        # append for multiple profiles
-        if (i == 0):
-            X = profile_X
-            y = profile_y
-#             debug_list = charge_preprocessed
-        else:
-            X = np.append(X, profile_X, axis=0)
-            y = np.append(y, profile_y, axis=0)
-#             debug_list = np.append(debug_list, charge_preprocessed, axis=0)
-        i += 1
-    
-#     plt.plot(debug_list)
-    print('Input:', X.shape, ' Output/Label:', y.shape)    
-    return X, y, scaler_volt
-
-def prepare_residual_input(params, profiles, slave, cell):
-    i = 0
-    
-    for profile in profiles:
-        # load data
-        current_raw = load_current_raw_data(profile)
-        
-#         charge_raw = []
-#         q_t = 0
-#         for j in range(len(current_raw)):
-#             q_t += current_raw[j] * (params['d_t'] * params['d_sample'])  / 3600
-#             charge_raw.append(q_t)
-        
-        voltage_raw = load_voltage_raw_data(profile, slave, cell)
-        theory_raw = predict_thevenin(params, profile)
-        
-        # preprocess data
-        current_preprocessed, _ = preprocess_raw_current(params, current_raw)    
-#         charge_preprocessed, _ = preprocess_raw_charge(params, charge_raw)
-        voltage_preprocessed, scaler_volt = preprocess_raw_voltage(params, voltage_raw)
-        theory_preprocessed, _ = preprocess_raw_thevenin(params, theory_raw)
-        
-        # repare residual data
-        residual_preprocessed = voltage_preprocessed - theory_preprocessed
-
-        # align current sequence to voltage if sample frequency differs
-        if residual_preprocessed.shape[0] != current_preprocessed.shape[0]:
-            current_preprocessed = align(current_preprocessed, residual_preprocessed)
-#             charge_preprocessed = align(charge_preprocessed, residual_preprocessed)
-
-        # create input features
-        profile_X1, profile_y = subsequences(current_preprocessed, residual_preprocessed, params['n_steps'])
-        profile_y = np.reshape(profile_y, (-1, 1))
-        profile_X1 = profile_X1.reshape(profile_X1.shape[0], profile_X1.shape[1], 1)
-
-#         profile_X2, _ = subsequences(charge_preprocessed, residual_preprocessed, params['n_steps'])
-#         profile_X2 = profile_X2.reshape(profile_X2.shape[0], profile_X2.shape[1], 1)
-        
-        profile_X = profile_X1
-#         profile_X = np.append(profile_X1, profile_X2, axis=2)
-
-        # append for multiple profiles
-        if (i == 0):
-            X = profile_X
-            y = profile_y
-            u = theory_preprocessed
-        else:
-            X = np.append(X, profile_X, axis=0)
-            y = np.append(y, profile_y, axis=0)
-            u = np.append(u, theory_preprocessed, axis=0)
-        i += 1
-    
-    print('Input:', X.shape, ' Output/Label:', y.shape)    
-    return X, y, u, scaler_volt
-
-def prepare_thevenin_pred(params, profiles):
-    i = 0
-    for profile in profiles:
-
-        if (i == 0):
-            uhat = predict_thevenin(params, profile)
-        else:
-            uhat = np.append(uhat, predict_thevenin(params, profile), axis=0)
-        i += 1
-
-    uhat, _ = preprocess_raw_voltage(params, uhat)
-    return uhat
-
+# ---------------------------------------- Initialization -------------------------------------------------
 def prepare_pretraining_input(params, profiles, slave, cell):
+    """Prepares the pretraining input data to be suitable for the network.
+
+    Args:
+        params (dict): 
+            Dictionary containing the appropriate keys for preprocessing
+            
+        profiles (list): 
+            A list of all FOBSS profiles which should be used
+            
+        slave (int): 
+            The battery slave (or stack)
+        
+        cell (int): 
+            The battery cell 
+
+    Returns:
+        A tuple containing 3 values. The prepared input X, the prepared output/label y and the used scalers.
+    """
     i = 0
     
     for profile in profiles:
@@ -702,7 +571,112 @@ def prepare_pretraining_input(params, profiles, slave, cell):
     print('Input:', X.shape, ' Output/Label:', y.shape)
     return X, y, scaler_volt
 
+# ---------------------------------------- Model Design -------------------------------------------------
+def prepare_thevenin_input(params, profiles, slave, cell):
+    """Prepares the model design input data to be suitable for the network.
+
+    Args:
+        params (dict): 
+            Dictionary containing the appropriate keys for preprocessing
+            
+        profiles (list): 
+            A list of all FOBSS profiles which should be used
+            
+        slave (int): 
+            The battery slave (or stack)
+        
+        cell (int): 
+            The battery cell 
+
+    Returns:
+        A tuple containing 3 values. The prepared input X, the prepared output/label y and the used scalers.
+    """
+    i = 0
+    
+    for profile in profiles:
+        # load data
+        current_raw = load_current_raw_data(profile)
+        voltage_raw = load_voltage_raw_data(profile, slave, cell)
+        
+        charge_raw = []
+        q_t = 0
+        for j in range(len(current_raw)):
+            q_t += current_raw[j] * (params['d_t'] * params['d_sample'])  / 3600
+            charge_raw.append(q_t)
+        
+        
+        # load SOC
+        _, _, _, _, ocv_curve_exact_lin = thevenin.get_SOC_values(profile, params)
+        v_0 = voltage_raw[0]
+        z_t0 = thevenin.ocv_inverse_exact_lin(v_0, ocv_curve_exact_lin)
+        q = 33.2 # expert knowledge
+        z_class = thevenin.z_wrapper(z_t0, q)
+        
+        # get OCV
+        ocv = []
+        for j in range(len(current_raw)):
+            i_k = current_raw[j]
+            z_k = z_class.z(-i_k, params['d_t']) # i > 0 on discharge, i < 0 on charge
+            ocv.append(thevenin.ocv_exact_lin(z_k))
+
+        # preprocess data
+        current_preprocessed, _ = preprocess_raw_current(params, current_raw)    
+        ocv_preprocessed, _ = preprocess_raw_voltage(params, ocv)
+        charge_preprocessed, _ = preprocess_raw_charge(params, charge_raw)
+        voltage_preprocessed, scaler_volt = preprocess_raw_voltage(params, voltage_raw)
+
+        # align current sequence to voltage if sample frequency differs
+        if voltage_preprocessed.shape[0] != current_preprocessed.shape[0]:
+            current_preprocessed = align(current_preprocessed, voltage_preprocessed)
+            ocv_preprocessed = align(ocv_preprocessed, voltage_preprocessed)
+            charge_preprocessed = align(charge_preprocessed, voltage_preprocessed)
+
+        # create input features
+        profile_X1, profile_y = subsequences(current_preprocessed, voltage_preprocessed, params['n_steps'])
+        profile_y = np.reshape(profile_y, (-1, 1))
+        profile_X1 = profile_X1.reshape(profile_X1.shape[0], profile_X1.shape[1], 1)
+        
+        profile_X2, _ = subsequences(ocv_preprocessed, voltage_preprocessed, params['n_steps'])
+        profile_X2 = profile_X2.reshape(profile_X2.shape[0], profile_X2.shape[1], 1)
+        
+        profile_X3, _ = subsequences(charge_preprocessed, voltage_preprocessed, params['n_steps'])
+        profile_X3 = profile_X3.reshape(profile_X3.shape[0], profile_X3.shape[1], 1)
+        
+        profile_X = np.append(profile_X1, profile_X2, axis=2)
+        profile_X = np.append(profile_X, profile_X3, axis=2)
+
+        # append for multiple profiles
+        if (i == 0):
+            X = profile_X
+            y = profile_y
+        else:
+            X = np.append(X, profile_X, axis=0)
+            y = np.append(y, profile_y, axis=0)
+        i += 1
+    
+    print('Input:', X.shape, ' Output/Label:', y.shape)
+    return X, y, scaler_volt
+
+
 def prepare_intermediate_soc(params, profiles, slave, cell):
+    """Prepares the SOC as a non-squential input variable to the network.
+
+    Args:
+        params (dict): 
+            Dictionary containing the appropriate keys for preprocessing
+            
+        profiles (list): 
+            A list of all FOBSS profiles which should be used
+            
+        slave (int): 
+            The battery slave (or stack)
+        
+        cell (int): 
+            The battery cell 
+
+    Returns:
+        A tuple containing 3 values. The prepared input X, the prepared output/label y and the used scalers.
+    """
     i = 0
     
     for profile in profiles:   
@@ -720,7 +694,6 @@ def prepare_intermediate_soc(params, profiles, slave, cell):
             initial_soc = align(initial_soc, voltage_preprocessed)
 
         # create input feature sequence
-        # ----
         sequence_X = np.append(np.repeat(initial_soc[0], params['n_steps'] - 1), initial_soc)
 
         profile_X = list()
@@ -734,7 +707,6 @@ def prepare_intermediate_soc(params, profiles, slave, cell):
             
         profile_X = np.array(profile_X)
         profile_X = np.reshape(profile_X, (-1, 1))        
-        # ----
         
         # append for multiple profiles
         if (i == 0):
@@ -747,6 +719,24 @@ def prepare_intermediate_soc(params, profiles, slave, cell):
     return X
 
 def prepare_intermediate_volt(params, profiles, slave, cell):
+    """Prepares the initial voltage as a non-squential input variable to the network.
+
+    Args:
+        params (dict): 
+            Dictionary containing the appropriate keys for preprocessing
+            
+        profiles (list): 
+            A list of all FOBSS profiles which should be used
+            
+        slave (int): 
+            The battery slave (or stack)
+        
+        cell (int): 
+            The battery cell 
+
+    Returns:
+        A tuple containing 3 values. The prepared input X, the prepared output/label y and the used scalers.
+    """
     i = 0
     
     for profile in profiles:   
@@ -766,7 +756,6 @@ def prepare_intermediate_volt(params, profiles, slave, cell):
             intial_voltage_preprocessed = align(intial_voltage_preprocessed, voltage_preprocessed)
 
         # create input feature sequence
-        # ----
         sequence_X = np.append(np.repeat(intial_voltage_preprocessed[0], params['n_steps'] - 1), intial_voltage_preprocessed)
 
         profile_X = list()
@@ -791,61 +780,135 @@ def prepare_intermediate_volt(params, profiles, slave, cell):
         
     return X
 
-@deprecated(reason="data_preprocessing.preprocess_raw_data should be used instead")
-def prepare(input_sequence, label_sequence, aligned, d_sample, n_steps, sigma):
-    """Prepares the data for input into the LSTM.
+# ---------------------------------------- Hybrid Model -------------------------------------------------
+def prepare_hybrid_input(params, profiles, slave, cell):
+    """Prepares the hybrid model input data to be suitable for the network.
 
-    Preparation incudes subsampling, smoothing, aligning differnt sized sequences and reshaping the sequence to the requested format.
-    
     Args:
-        input_sequence (numpy.ndarray): 
-            The input feature sequence
+        params (dict): 
+            Dictionary containing the appropriate keys for preprocessing
             
-        label_sequence (numpy.ndarray): 
-            The output/groud truth sequence
+        profiles (list): 
+            A list of all FOBSS profiles which should be used
             
-        aligned (bool): 
-            Indicates if input and label sequence are of equal size or need alignment
-            
-        d_sample (int): 
-            Sample frequency
-            
-        n_steps (int): 
-            The amount of time steps used as an input into the LSTM for prediction
-            
-        sigma (int): 
-            Parameter for the data smoothing
+        slave (int): 
+            The battery slave (or stack)
+        
+        cell (int): 
+            The battery cell 
 
     Returns:
-        A tuple of 3 values. The prepared input sequence X, the output sequence of labels y and the scaler component for y. 
-        This is needed afterwards to scale the output back to the original value range.
+        A tuple containing 3 values. The prepared input X, the prepared output/label y and the used scalers.
     """
-    # align data if not of equal size
-    if not aligned:        
-        input_sequence = align(input_sequence, label_sequence)
+    i = 0
+    
+    for profile in profiles:
+        # load data
+        current_raw = load_current_raw_data(profile)
+        voltage_raw = load_voltage_raw_data(profile, slave, cell)
+        
+        # predict on theory model
+        theory_raw = predict_thevenin(params, profile)
+        
+        charge_raw = []
+        q_t = 0
+        for j in range(len(current_raw)):
+            q_t += current_raw[j] * (params['d_t'] * params['d_sample'])  / 3600
+            charge_raw.append(q_t)
+            
+        # preprocess data
+        current_preprocessed, _ = preprocess_raw_current(params, current_raw)    
+        voltage_preprocessed, scaler_volt = preprocess_raw_voltage(params, voltage_raw)
+        theory_preprocessed, _ = preprocess_raw_thevenin(params, theory_raw)
+        charge_preprocessed, _ = preprocess_raw_charge(params, charge_raw)
+        
+        # align current sequence to voltage if sample frequency differs
+        if voltage_preprocessed.shape[0] != current_preprocessed.shape[0]:
+            current_preprocessed = align(current_preprocessed, voltage_preprocessed)
+            charge_preprocessed = align(charge_preprocessed, voltage_preprocessed)
 
-    # subsample and smooth data 
-    input_sequence_ = subsample(input_sequence, d_sample)
-    input_sequence_ = smooth(input_sequence_, sigma)
-    
-    label_sequence_ = subsample(label_sequence, d_sample)
-    label_sequence_ = smooth(label_sequence_, sigma)
+        # create input features
+        profile_X1, profile_y = subsequences(current_preprocessed, voltage_preprocessed, params['n_steps'])
+        profile_y = np.reshape(profile_y, (-1, 1))
+        profile_X1 = profile_X1.reshape(profile_X1.shape[0], profile_X1.shape[1], 1)
 
-    # convert into X and y sequences
-    X, y = subsequences(input_sequence_, label_sequence_, n_steps)
-    y = np.reshape(y, (-1, 1))
+        profile_X2, _ = subsequences(theory_preprocessed, voltage_preprocessed, params['n_steps'])
+        profile_X2 = profile_X2.reshape(profile_X2.shape[0], profile_X2.shape[1], 1)
+        
+        profile_X3, _ = subsequences(charge_preprocessed, voltage_preprocessed, params['n_steps'])
+        profile_X3 = profile_X3.reshape(profile_X3.shape[0], profile_X3.shape[1], 1)
+        
+        profile_X = np.append(profile_X1, profile_X2, axis=2)
+        profile_X = np.append(profile_X, profile_X3, axis=2)
 
-    # fit and scale X
-    scaler_X = MinMaxScaler(feature_range = (0, 1))
-    scaler_X.fit(X)
-    X_scaled = scaler_X.transform(X)
+        # append for multiple profiles
+        if (i == 0):
+            X = profile_X
+            y = profile_y
+        else:
+            X = np.append(X, profile_X, axis=0)
+            y = np.append(y, profile_y, axis=0)
+        i += 1
     
-    # fit and scale y
-    scaler_y = MinMaxScaler(feature_range = (0, 1))
-    scaler_y.fit(y)
-    y_scaled = scaler_y.transform(y)
+    print('Input:', X.shape, ' Output/Label:', y.shape)    
+    return X, y, scaler_volt
+
+# ---------------------------------------- Residual Learning -------------------------------------------------
+def prepare_residual_input(params, profiles, slave, cell):
+    """Prepares the residual learning input data to be suitable for the network.
+
+    Args:
+        params (dict): 
+            Dictionary containing the appropriate keys for preprocessing
+            
+        profiles (list): 
+            A list of all FOBSS profiles which should be used
+            
+        slave (int): 
+            The battery slave (or stack)
+        
+        cell (int): 
+            The battery cell 
+
+    Returns:
+        A tuple containing 3 values. The prepared input X, the prepared output/label y and the used scalers.
+    """
+    i = 0
     
-    # reshape into correct format
-    X_scaled = X_scaled.reshape(X_scaled.shape[0], X_scaled.shape[1], 1)
+    for profile in profiles:
+        # load data
+        current_raw = load_current_raw_data(profile)
+        
+        voltage_raw = load_voltage_raw_data(profile, slave, cell)
+        theory_raw = predict_thevenin(params, profile)
+        
+        # preprocess data
+        current_preprocessed, _ = preprocess_raw_current(params, current_raw)    
+        voltage_preprocessed, scaler_volt = preprocess_raw_voltage(params, voltage_raw)
+        theory_preprocessed, _ = preprocess_raw_thevenin(params, theory_raw)
+        
+        # repare residual data
+        residual_preprocessed = voltage_preprocessed - theory_preprocessed
+
+        # align current sequence to voltage if sample frequency differs
+        if residual_preprocessed.shape[0] != current_preprocessed.shape[0]:
+            current_preprocessed = align(current_preprocessed, residual_preprocessed)
+
+        # create input features
+        profile_X, profile_y = subsequences(current_preprocessed, residual_preprocessed, params['n_steps'])
+        profile_y = np.reshape(profile_y, (-1, 1))
+        profile_X = profile_X.reshape(profile_X.shape[0], profile_X.shape[1], 1)
+
+        # append for multiple profiles
+        if (i == 0):
+            X = profile_X
+            y = profile_y
+            u = theory_preprocessed
+        else:
+            X = np.append(X, profile_X, axis=0)
+            y = np.append(y, profile_y, axis=0)
+            u = np.append(u, theory_preprocessed, axis=0)
+        i += 1
     
-    return X_scaled, y_scaled, scaler_y
+    print('Input:', X.shape, ' Output/Label:', y.shape)    
+    return X, y, u, scaler_volt
