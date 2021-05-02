@@ -1,5 +1,5 @@
 # Setup
-To be able to execute the notebooks provided in this directory, two steps have to be taken:
+To be able to execute the notebooks in this directory, three steps have to be taken:
 
 ## 1. Initialize General Hyper Parameters
 Run the notebook `00-Data_Setup.ipynb` to initialize the hyper parameters needed for every model.
