@@ -1040,4 +1040,4 @@ def vis_predict_usecases(profiles, r_0, r_1, c_1, params):
     MODEL_ID = str(np.random.randint(10000))
     print('Saved plot to:', '../../../reports/figures/theory_baseline-' + str(params['model_id']) + '-use_cases.png')
     fig.savefig('../../../reports/figures/theory_baseline-' + str(params['model_id']) + '-use_cases.png')
-    return v
+    return case_1_mse, case_2_mse, case_3_mse

@@ -882,10 +882,17 @@ def prepare_residual_input(params, profiles, slave, cell):
         voltage_raw = load_voltage_raw_data(profile, slave, cell)
         theory_raw = predict_thevenin(params, profile)
         
+        charge_raw = []
+        q_t = 0
+        for j in range(len(current_raw)):
+            q_t += current_raw[j] * (params['d_t'] * params['d_sample'])  / 3600
+            charge_raw.append(q_t)      
+        
         # preprocess data
         current_preprocessed, _ = preprocess_raw_current(params, current_raw)    
         voltage_preprocessed, scaler_volt = preprocess_raw_voltage(params, voltage_raw)
         theory_preprocessed, _ = preprocess_raw_thevenin(params, theory_raw)
+        charge_preprocessed, _ = preprocess_raw_charge(params, charge_raw)
         
         # repare residual data
         residual_preprocessed = voltage_preprocessed - theory_preprocessed
@@ -893,11 +900,19 @@ def prepare_residual_input(params, profiles, slave, cell):
         # align current sequence to voltage if sample frequency differs
         if residual_preprocessed.shape[0] != current_preprocessed.shape[0]:
             current_preprocessed = align(current_preprocessed, residual_preprocessed)
+            charge_preprocessed = align(charge_preprocessed, voltage_preprocessed)
 
-        # create input features
-        profile_X, profile_y = subsequences(current_preprocessed, residual_preprocessed, params['n_steps'])
+
+        # create input features        
+        profile_X1, profile_y = subsequences(current_preprocessed, voltage_preprocessed, params['n_steps'])
         profile_y = np.reshape(profile_y, (-1, 1))
-        profile_X = profile_X.reshape(profile_X.shape[0], profile_X.shape[1], 1)
+        profile_X1 = profile_X1.reshape(profile_X1.shape[0], profile_X1.shape[1], 1)
+
+       
+        profile_X2, _ = subsequences(charge_preprocessed, voltage_preprocessed, params['n_steps'])
+        profile_X2 = profile_X2.reshape(profile_X2.shape[0], profile_X2.shape[1], 1)
+        
+        profile_X = np.append(profile_X1, profile_X2, axis=2)
 
         # append for multiple profiles
         if (i == 0):

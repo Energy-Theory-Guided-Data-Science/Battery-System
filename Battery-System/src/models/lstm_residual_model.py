@@ -440,5 +440,5 @@ class Residual_Model:
         plt.legend()
         plt.show()
         
-        return fig
+        return train_mse, case_1_mse, case_2_mse, case_3_mse, fig
         

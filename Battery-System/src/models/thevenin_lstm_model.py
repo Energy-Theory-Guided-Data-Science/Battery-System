@@ -15,7 +15,7 @@ from tensorflow.keras import backend
 from tensorflow.keras import losses
 from tensorflow.keras import callbacks
 
-from cond_rnn import ConditionalRNN
+from cond_rnn import ConditionalRecurrent
 
 # ---------------------------------------------------- Callbacks -------------------------------------------------
 class TimeHistory(callbacks.Callback):
@@ -88,7 +88,7 @@ class Model:
         """
         # --------- create model ---------
         model = tf.keras.Sequential(layers=[
-            ConditionalRNN(params['n_lstm_units_1'], cell='LSTM'), 
+            ConditionalRecurrent(layers.LSTM(params['n_lstm_units_1'])), 
             layers.Dense(units=1, activation='linear') 
         ])
 
