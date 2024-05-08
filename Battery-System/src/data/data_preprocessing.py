@@ -85,6 +85,8 @@ def subsequences(sequence_X, sequence_y, n_steps):
 
         X.append(sequence_X[i:end_ix])
         y.append(sequence_y[i])
+#         X.append(sequence_X[i:end_ix])
+#         y.append(sequence_y[end_ix-i])
         
     return np.array(X), np.array(y)
 
@@ -154,7 +156,7 @@ def align(sequence_1, sequence_2):
     return aligned_sequence
 
 
-def preprocess_raw_current(params, sequence):
+def preprocess_raw_current(params, sequence, smoothing=True):
     """Preprocesses the raw current by subsamling, smoothing and scaling the data.
     Args:
         params (dict): 
@@ -169,7 +171,8 @@ def preprocess_raw_current(params, sequence):
         (used for retransforming after training).
     """
     sequence = subsample(sequence, params['d_sample'])
-    sequence = smooth(sequence, params['gauss_sigma'])
+    if smoothing:
+        sequence = smooth(sequence, params['gauss_sigma'])
     sequence = np.reshape(sequence, (-1, 1))
     
     scaler = MinMaxScaler(feature_range=(params['feature_range_cur_low'], params['feature_range_cur_high']))
@@ -182,7 +185,7 @@ def preprocess_raw_current(params, sequence):
     return sequence, scaler
 
 
-def preprocess_raw_charge(params, sequence):
+def preprocess_raw_charge(params, sequence, smoothing=True):
     """Preprocesses the raw charge by subsamling, smoothing and scaling the data.
     Args:
         params (dict): 
@@ -196,8 +199,11 @@ def preprocess_raw_charge(params, sequence):
         A tuple of 2 values. The preprocessed sequence and the scaler object 
         (used for retransforming after training).
     """
-    sequence = np.reshape(sequence, (-1, 1))
     sequence = subsample(sequence, params['d_sample'])
+    if smoothing:
+        sequence = smooth(sequence, params['gauss_sigma'])
+    sequence = np.reshape(sequence, (-1, 1))
+        
 
     scaler = MinMaxScaler(feature_range=(params['feature_range_charge_low'], params['feature_range_charge_high']))
     
@@ -209,7 +215,7 @@ def preprocess_raw_charge(params, sequence):
     return sequence, scaler
 
 
-def preprocess_raw_voltage(params, sequence):
+def preprocess_raw_voltage(params, sequence, smoothing=True):
     """Preprocesses the raw voltage by subsamling, smoothing and scaling the data.
     Args:
         params (dict): 
@@ -224,7 +230,8 @@ def preprocess_raw_voltage(params, sequence):
         (used for retransforming after training).
     """
     sequence = subsample(sequence, params['d_sample'])
-    sequence = smooth(sequence, params['gauss_sigma'])
+    if smoothing:
+        sequence = smooth(sequence, params['gauss_sigma'])
     sequence = np.reshape(sequence, (-1, 1))
     
     scaler = MinMaxScaler(feature_range=(params['feature_range_volt_low'], params['feature_range_volt_high']))
@@ -238,7 +245,7 @@ def preprocess_raw_voltage(params, sequence):
     return sequence, scaler
 
 
-def preprocess_raw_thevenin(params, sequence):
+def preprocess_raw_thevenin(params, sequence, smoothing=True):
     """Preprocesses the raw thevenin voltage by smoothing and scaling the data.
     Args:
         params (dict): 
@@ -252,7 +259,8 @@ def preprocess_raw_thevenin(params, sequence):
         A tuple of 2 values. The preprocessed sequence and the scaler object 
         (used for retransforming after training).
     """
-    sequence = smooth(sequence, params['gauss_sigma'])
+    if smoothing:
+        sequence = smooth(sequence, params['gauss_sigma'])
     sequence = np.reshape(sequence, (-1, 1))
     
     scaler = MinMaxScaler(feature_range=(params['feature_range_volt_low'], params['feature_range_volt_high']))
@@ -904,7 +912,9 @@ def prepare_residual_input(params, profiles, slave, cell):
 
 
         # create input features        
-        profile_X1, profile_y = subsequences(current_preprocessed, voltage_preprocessed, params['n_steps'])
+#         profile_X1, profile_y = subsequences(current_preprocessed, voltage_preprocessed, params['n_steps'])
+        profile_X1, profile_y = subsequences(current_preprocessed, residual_preprocessed, params['n_steps'])
+
         profile_y = np.reshape(profile_y, (-1, 1))
         profile_X1 = profile_X1.reshape(profile_X1.shape[0], profile_X1.shape[1], 1)
 
@@ -927,3 +937,111 @@ def prepare_residual_input(params, profiles, slave, cell):
     
     print('Input:', X.shape, ' Output/Label:', y.shape)    
     return X, y, u, scaler_volt
+
+# ---------------------------------------- All features -------------------------------------------------
+def prepare_all_features_input(params, profiles, slave, cell):
+    """Prepares the model design input data to be suitable for the network.
+
+    Args:
+        params (dict): 
+            Dictionary containing the appropriate keys for preprocessing
+            
+        profiles (list): 
+            A list of all FOBSS profiles which should be used
+            
+        slave (int): 
+            The battery slave (or stack)
+        
+        cell (int): 
+            The battery cell 
+
+    Returns:
+        A tuple containing 3 values. The list of prepared input X, the prepared output/label y and the used scalers.
+    """
+    i = 0
+    
+    X_profiles_list = []
+    y_profiles_list = []
+    for profile in profiles:
+        # load data
+        current_raw = load_current_raw_data(profile)
+        voltage_raw = load_voltage_raw_data(profile, slave, cell)
+        initial_voltage = np.repeat(voltage_raw[0], len(voltage_raw))
+        
+        # predict on theory model
+        theory_raw = predict_thevenin(params, profile)
+        
+        charge_raw = []
+        q_t = 0
+        for j in range(len(current_raw)):
+            q_t += current_raw[j] * (params['d_t'] * params['d_sample'])  / 3600
+            charge_raw.append(q_t)
+        
+        
+        # load SOC
+        _, _, _, _, ocv_curve_exact_lin = thevenin.get_SOC_values(profile, params)
+        v_0 = voltage_raw[0]
+        z_t0 = thevenin.ocv_inverse_exact_lin(v_0, ocv_curve_exact_lin)
+        q = 33.2 # expert knowledge
+        z_class = thevenin.z_wrapper(z_t0, q)
+        
+        # get OCV
+        ocv = []
+        for j in range(len(current_raw)):
+            i_k = current_raw[j]
+            z_k = z_class.z(-i_k, params['d_t']) # i > 0 on discharge, i < 0 on charge
+            ocv.append(thevenin.ocv_exact_lin(z_k))
+
+        # preprocess data
+        current_preprocessed, _ = preprocess_raw_current(params, current_raw, smoothing=False)    
+        ocv_preprocessed, _ = preprocess_raw_voltage(params, ocv, smoothing=False)
+        charge_preprocessed, _ = preprocess_raw_charge(params, charge_raw, smoothing=False)
+        voltage_preprocessed, scaler_volt = preprocess_raw_voltage(params, voltage_raw, smoothing=False)
+        intial_voltage_preprocessed, _ = preprocess_raw_voltage(params, initial_voltage, smoothing=False)
+        theory_preprocessed, _ = preprocess_raw_thevenin(params, theory_raw, smoothing=False)
+        residual_preprocessed = voltage_preprocessed - theory_preprocessed
+
+
+        # align current sequence to voltage if sample frequency differs
+        if voltage_preprocessed.shape[0] != current_preprocessed.shape[0]:
+            current_preprocessed = align(current_preprocessed, voltage_preprocessed)
+            ocv_preprocessed = align(ocv_preprocessed, voltage_preprocessed)
+            charge_preprocessed = align(charge_preprocessed, voltage_preprocessed)
+        
+        # align initial_voltage_preprocessed sequence to voltage if sample frequency differs
+        if voltage_preprocessed.shape[0] != intial_voltage_preprocessed.shape[0]:
+            intial_voltage_preprocessed = align(intial_voltage_preprocessed, voltage_preprocessed)
+
+        # create input features
+        profile_X1, profile_y = subsequences(current_preprocessed, voltage_preprocessed, params['n_steps'])
+        profile_y = np.reshape(profile_y, (-1, 1))
+        profile_X1 = profile_X1.reshape(profile_X1.shape[0], profile_X1.shape[1], 1)
+        
+        profile_X2, _ = subsequences(charge_preprocessed, voltage_preprocessed, params['n_steps'])
+        profile_X2 = profile_X2.reshape(profile_X2.shape[0], profile_X2.shape[1], 1)        
+        
+        
+        profile_X3, _ = subsequences(intial_voltage_preprocessed, voltage_preprocessed, params['n_steps'])
+        profile_X3 = profile_X3.reshape(profile_X3.shape[0], profile_X3.shape[1], 1)
+        
+        profile_X4, _ = subsequences(ocv_preprocessed, voltage_preprocessed, params['n_steps'])
+        profile_X4 = profile_X4.reshape(profile_X4.shape[0], profile_X4.shape[1], 1)
+                
+
+        
+        profile_X5, _ = subsequences(theory_preprocessed, voltage_preprocessed, params['n_steps'])
+        profile_X5 = profile_X5.reshape(profile_X5.shape[0], profile_X5.shape[1], 1)    
+        
+        profile_X6, _ = subsequences(residual_preprocessed, voltage_preprocessed, params['n_steps'])
+        profile_X6 = profile_X6.reshape(profile_X6.shape[0], profile_X6.shape[1], 1)           
+        
+        profile_X = np.append(profile_X1, profile_X2, axis=2)
+        profile_X = np.append(profile_X, profile_X3, axis=2)
+        profile_X = np.append(profile_X, profile_X4, axis=2)
+        profile_X = np.append(profile_X, profile_X5, axis=2)
+        profile_X = np.append(profile_X, profile_X6, axis=2)
+        
+        X_profiles_list.append(profile_X)
+        y_profiles_list.append(profile_y)
+    
+    return X_profiles_list, y_profiles_list, scaler_volt
