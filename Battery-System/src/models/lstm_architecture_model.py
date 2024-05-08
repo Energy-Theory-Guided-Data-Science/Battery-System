@@ -1,5 +1,5 @@
 """
-Module containing a class modelling a LSTM network for voltage time series prediciton.
+Module containing a class modelling an LSTM network for voltage time series prediciton using model design.
 """
 import time
 import numpy as np
@@ -8,14 +8,17 @@ import json
 import matplotlib.pyplot as plt
 import matplotlib.mlab as mlab
 import sklearn.metrics as metrics
-import tensorflow.python.util.deprecation as deprecation
-deprecation._PRINT_DEPRECATION_WARNINGS = False # used to hide deprecation warning raised by tensorflow
+from tabulate import tabulate
+
+tf.get_logger().setLevel('ERROR') # omitt tensorflow warnings
 from tensorflow.keras import layers
 from tensorflow.keras import backend
 from tensorflow.keras import losses
 from tensorflow.keras import callbacks
 from tensorflow.keras import optimizers
-from tabulate import tabulate
+
+
+from cond_rnn import ConditionalRecurrent
 
 # ---------------------------------------------------- Callbacks -------------------------------------------------
 class TimeHistory(callbacks.Callback):
@@ -59,12 +62,9 @@ class TimeHistory(callbacks.Callback):
         """
         self.times.append(time.time() - self.epoch_time_start)
 
-# --------------------------------------------- LSTM Model ------------------------------------------------------
+# --------------------------------------------- LSTM Model  ------------------------------------------------------
 class Model: 
-    """Responsible for managing the neural network architecture which is used to predict voltage time series data.
-
-    Model is suited to work with the FOBSS data set (http://dbis.ipd.kit.edu/download/FOBSS_final.pdf) 
-    but can also be used with other kinds of current and voltage data.
+    """Responsible for managing the neural network architecture using model design. 
 
     Attributes:
         model (tensorflow.python.keras.engine.sequential.Sequential): 
@@ -80,7 +80,8 @@ class Model:
             A tuple of scaler objects used to scale and rescale X and y for training
     """
     def initialize(self, params):
-        """Initializes the LSTM model.
+        """Initializes the LSTM model using conditional RNNs (https://github.com/philipperemy/cond_rnn) 
+        to include non-sequential data.
 
         For visualization purposes, a summary of the model will be printed.
 
@@ -89,38 +90,37 @@ class Model:
                 A dictionary containing the hyperparameters
         """
         # --------- create model ---------
-        model = tf.keras.Sequential(name='LSTM')
+        model = tf.keras.Sequential(name='LSTM Architecture')
 #         # layer 1
-#         model.add(layers.LSTM(units=params['n_lstm_units_1'], input_shape=(params['n_steps'], params['n_features']), return_sequences=True))
+#         model.add(ConditionalRecurrent(layers.LSTM(units=params['n_lstm_units_1'], input_shape=(params['n_steps'], params['n_features']), return_sequences=True)))
 #         # layer 2
 #         model.add(layers.LSTM(units=params['n_lstm_units_2']))
+#         #model.add(ConditionalRecurrent(layers.LSTM(units=params['n_lstm_units_2'])))
+#         # output layer
+#         model.add(layers.Dense(1, activation=params['activation_output_layer']))
+        
         
         # layer 1
         if params['n_lstm_layers'] == 1:
-            model.add(layers.LSTM(units=params['n_lstm_units_1'], input_shape=(params['n_steps'], params['n_features']),
-                                  return_sequences=False))
+            model.add(ConditionalRecurrent(layers.LSTM(units=params['n_lstm_units_1'], input_shape=(params['n_steps'], params['n_features']),return_sequences=False)))
         # layer 2+
         else:
-            model.add(layers.LSTM(units=params['n_lstm_units_1'], input_shape=(params['n_steps'], params['n_features']),
-                                  return_sequences=True))
+            model.add(ConditionalRecurrent(layers.LSTM(units=params['n_lstm_units_1'], input_shape=(params['n_steps'], params['n_features']),return_sequences=True)))
             for i in range(params['n_lstm_layers'] - 2):
                 model.add(layers.LSTM(units=params['n_lstm_units_2'], return_sequences=True))
-            model.add(layers.LSTM(units=params['n_lstm_units_2'], return_sequences=False))
-            
-            
+            model.add(layers.LSTM(units=params['n_lstm_units_2'], return_sequences=False))        
+   
         # output layer
         model.add(layers.Dense(1, activation=params['activation_output_layer']))
-        #model.summary()
         
-        # --------- compile model ---------    
+        # --------- compile model ---------
         optimizer = optimizers.Adam(learning_rate=params['lr'])
-        model.compile(run_eagerly=True, optimizer=optimizer, loss='mse', metrics=['mse', params['metric']])
+        model.compile(run_eagerly=True, optimizer=optimizer, loss='mse', metrics=['mse', params['metric']])        
         
         # save model parameters
         self.model = model
         self.params = params
         return None
-    
     
     def plot_training_results(self, history):
         # Extract training and validation metrics
@@ -144,9 +144,8 @@ class Model:
         else:
             plt.show()
         plt.close("all")
-        plt.clf()
-   
-        
+        plt.clf()    
+
     def train_f(self, X, y, scalers_train, half_train=False, verbose=0):
         """Trains the LSTM model.
 
@@ -169,13 +168,10 @@ class Model:
         """
         # --------- train model ---------
         
-
+  
         n_samples = len(X)
         n_epochs = self.params['n_epochs']
-        
-        if half_train:
-            n_epochs = n_epochs // 2
-        
+               
         history = {'loss': [], 'mae': []}
 
         for epoch in range(n_epochs):
@@ -198,12 +194,11 @@ class Model:
 
 
         self.plot_training_results(history)
-        self.model.save(self.params['model_save_path'] + "/model.h5")
+        self.model.save(self.params['model_save_path'] + "/model.h5")        
 
         # save parameters
         self.history = history
-        self.scalers_train = scalers_train    
-        
+        self.scalers_train = scalers_train        
 
 #     def test_usecases(self, X_case_1, y_case_1, X_case_2, y_case_2, X_case_3, y_case_3, scalers_train):
 #         """Tests the LSTM model on validation and test data.
@@ -424,3 +419,4 @@ class Model:
             plt.show()
         plt.close("all")
         plt.clf()    
+    
